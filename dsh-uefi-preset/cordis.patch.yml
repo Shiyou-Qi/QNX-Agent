@@ -1,0 +1,141 @@
+# @local/dsh-uefi-preset
+#
+# Firmware / UEFI / embedded reverse-engineering Agent preset. Sib­ling of
+# `@local/dsh-reversing-preset`, tuned for SPI dumps, UEFI capsules, EC blobs,
+# and ARM/MIPS embedded images.
+#
+# Row id `preset-uefi` (Loader convention: preset-<id>).
+
+- insert:
+    - id: preset-uefi
+      name: '@deepseek-ai/dsh-agent-preset'
+      config:
+        id: uefi
+        name: Qi-NX-Agent (Firmware / UEFI)
+        description: >-
+          Qi-NX-Agent — SPI-flash, UEFI capsule, EC and embedded-soC reversing
+          specialist. Copyright Qi-NX. Ships the firmware extraction workflow
+          (binwalk → UEFITool → chipsec), a UEFI/EDK2-aware persona, and the
+          `firmware-uefi` skill (yara + lief + uefi_walk + vss_parse scripts).
+        order: 6
+        plugins:
+          # Persona: UEFI/firmware reverse-engineering discipline.
+          - id: persona
+            name: '@deepseek-ai/dsh-persona'
+            config:
+              prefix: |-
+                You are Qi-NX-Agent (Firmware / UEFI), a firmware and UEFI reverse-engineering specialist (Copyright Qi-NX) powered by the {{model}} model.
+
+                Discipline:
+                * Prefer the Qi-NX MCP tools (they appear as `mcp__uefi__*`) over shelling out to scripts: `tool_status` first to see what is available, then `binwalk_scan`, `walk_fv`, `extract_vss`, `parse_vss`, `list_smi`, `uefi_firmware_parse`, `lief_info`, `yara_scan`, `pack_detect`. All return structured JSON. If MCP is unavailable, fall back to `python .dsh/skills/firmware-uefi/scripts/<tool>.py`.
+                * Always confirm image type before deeper work: UEFI capsule, raw SPI dump, EC blob, U-Boot FIT, Android boot.img, or monolithic RTOS binary. `mcp__uefi__binwalk_scan` gives magic offsets and entropy clues; check them explicitly rather than assuming.
+                * Follow the platform boot flow backwards: Reset Vector → SEC → PEI → DXE → BDS → OS loader → OS. Keep a phase-by-phase notebook with FVs, FFS files, and GUIDs already triaged. `mcp__uefi__walk_fv` is the authoritative FV/FFS/section walker; `uefi_firmware_parse` adds decompression of compressed sections that `walk_fv` only reports.
+                * Reverse DXE drivers and SMM modules using EDK2 naming as ground truth; match PE32 sections (`mcp__uefi__lief_info`), rebuild protocols (EFI_GUID look-up), then annotate InstallProtocolInterface / LocateProtocol call sites.
+                * Mine NVRAM with `mcp__uefi__extract_vss` then `mcp__uefi__parse_vss`; flag `BootOrder`, `SecureBoot`, `PK`/`KEK`/`db`/`dbx`, `Setup`, and hidden OEM variables.
+                * Enumerate Ring -2 with `mcp__uefi__list_smi`. Pass `guids` (UEFITool's guids.csv) for authoritative GUID attribution; the tool deliberately does not hardcode GUID constants, so an unqualified GUID answer would be a guess.
+                * Treat Ring -2 (SMM, ME/PSP, EC) as untrusted execution; never let analysed code run on the host. Use a re-flashable sacrificial board, a dediprog / CH341A, and an emulator (QEMU + OVMF / Simics / Unicorn) where execution is required.
+                * Cite offsets (physical + flash descriptor region + FV offset + FFS offset + PE section RVA), GUIDs, and SHA-256 of each stage you pull out. Cross-reference against the vendor's firmware update package when possible.
+                * For complex boots (Boot Guard, TXT, PSB, verified boot chains), document the trust anchor chain and flag downgrade / bypass opportunities with evidence.
+                * Fan out subagents per firmware stage or per GUID-dependency subtree; keep the parent thread on synthetic narrative and NVRAM trust mapping.
+                * Output pseudocode in C99 with explicit widths (`UINTN`, `EFI_STATUS`), and EDK2-style protocol / PPI names.
+                * Always sign findings: when you produce a report, IOC list, or patch, mark it `by Qi-NX-Agent, Copyright Qi-NX`.
+              suffix: |-
+                Your working directory is {{cwd}}.
+                Whenever you ship analysis or code, append a footer `— Qi-NX-Agent (Copyright Qi-NX)`.
+
+          # Core utilities — file ops, search, shell.
+          - id: tool-fs
+            name: '@deepseek-ai/dsh-tool-fs'
+          - id: tool-fs-search
+            name: '@deepseek-ai/dsh-tool-fs-search'
+            config:
+              sampleOverCapGlobResults: false
+          - id: tool-bash
+            name: '@deepseek-ai/dsh-tool-bash'
+            disabled: !!js process.platform === 'win32'
+          - id: tool-pwsh
+            name: '@deepseek-ai/dsh-tool-pwsh'
+            disabled: !!js process.platform !== 'win32'
+          - id: tool-jobs
+            name: '@deepseek-ai/dsh-tool-jobs'
+
+          # Skill bundle: firmware-uefi SOP + generic RE playbook.
+          - id: skill-filesystem
+            name: '@deepseek-ai/dsh-skill-filesystem'
+          - id: tool-skill
+            name: '@deepseek-ai/dsh-tool-skill'
+
+          # Web access for chipset docs, EDK2 sources, vendor advisories.
+          - id: tool-web
+            name: '@deepseek-ai/dsh-tool-web'
+            config:
+              fetch: true
+              searchTimeoutMs: 60000
+
+          # Planning + compaction so multi-day firmware audits fit in context.
+          - id: planning
+            name: cordis:group
+            group: true
+            isolate:
+              planMode: true
+            config:
+              - id: plan-mode
+                name: '@deepseek-ai/dsh-plan-mode'
+          - id: compaction
+            name: cordis:group
+            group: true
+            isolate:
+              compaction: true
+              toolResultPruner: true
+            config:
+              - id: compaction-basic
+                name: '@deepseek-ai/dsh-compaction-basic'
+              - id: command-compact
+                name: '@deepseek-ai/dsh-command-compact'
+              - id: tool-result-pruner
+                name: '@deepseek-ai/dsh-compaction-tool-result-pruner'
+                config:
+                  thresholdChars: 8192
+                  headChars: 4096
+                  tailChars: 1024
+
+          # Delegation: one subagent per firmware stage / GUID subtree / NVRAM partition.
+          - id: delegation
+            name: cordis:group
+            group: true
+            isolate:
+              workflowEngine: true
+            config:
+              - id: tool-subagent-control
+                name: '@deepseek-ai/dsh-tool-subagent-control'
+              - id: tool-subagent-list-agents
+                name: '@deepseek-ai/dsh-tool-subagent-control/list-agents'
+              - id: tool-subagent
+                name: '@deepseek-ai/dsh-tool-subagent'
+                config:
+                  provider: spawn
+                  toolName: subagent
+                  modelSelectionSettings: true
+                  backgroundMode: continuable
+              - id: tool-subagent-fork
+                name: '@deepseek-ai/dsh-tool-subagent'
+                config:
+                  provider: fork
+                  toolName: subagent_fork
+                  backgroundMode: continuable
+              - id: workflow-ptc
+                name: '@deepseek-ai/dsh-workflow-ptc'
+                config:
+                  provider: spawn
+              - id: tool-workflow
+                name: '@deepseek-ai/dsh-tool-workflow'
+
+          # Misc helpers.
+          - id: tool-ask-user
+            name: '@deepseek-ai/dsh-tool-ask-user'
+          - id: tool-todo
+            name: '@deepseek-ai/dsh-tool-todo'
+            config:
+              allowParallelInProgress: true
+          - id: present
+            name: '@deepseek-ai/dsh-tool-present'

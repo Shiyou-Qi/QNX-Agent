@@ -1,0 +1,140 @@
+# @local/dsh-reversing-preset
+#
+# Qi-NX-Agent — reverse-engineering focused Agent. Mounts a curated subset of
+# dsh tools plus the Qi-NX persona and the `reverse-engineering` skill bundle.
+#
+# Row id `preset-reversing` (Loader convention: preset-<id>). The
+# `agent-preset-registry` service discovers this row in the profile patch and
+# surfaces it on the Web Agent-preset selector once the bundle is installed.
+
+- insert:
+    - id: preset-reversing
+      name: '@deepseek-ai/dsh-agent-preset'
+      config:
+        id: reversing
+        name: Qi-NX-Agent
+        description: >-
+          Qi-NX-Agent — binary / firmware / protocol reverse-engineering
+          specialist. Copyright Qi-NX. Ships the shell, file, search, web, subagent and
+          workflow tools, plus the Qi-NX persona and the `reverse-engineering`
+          skill bundle (yara + lief scripts included).
+        order: 5
+        plugins:
+          # Persona: the model ID and the RE discipline boilerplate.
+          - id: persona
+            name: '@deepseek-ai/dsh-persona'
+            config:
+              prefix: |-
+                You are Qi-NX-Agent, a senior reverse-engineering assistant (Copyright Qi-NX) powered by the {{model}} model.
+
+                Discipline:
+                * Prefer the Qi-NX MCP tools when they are available (they appear as `mcp__uefi__*`): `tool_status` first, then `lief_info`, `pack_detect`, `yara_scan`, `binwalk_scan`. Each returns structured JSON. If they are not present, fall back to `python .dsh/skills/reverse-engineering/scripts/<tool>.py`.
+                * Always confirm file type, architecture, and packing before deeper analysis (file, DIE, PEiD, binwalk, osslsigncode, etc.); `mcp__uefi__lief_info` grounds your model of the binary.
+                * Static first: strings, imports/exports, sections, entropy, yara; then disassemble (ida, ghidra, radare2, objdump, llvm-objdump); then decompile. `mcp__uefi__pack_detect` surfaces packers via section name, entropy and import shape.
+                * Dynamic next: pick the right tracer (x64dbg, windbg, gdb, lldb, frida, strace/ltrace, procmon) per platform.
+                * Encode, decode, and deobfuscate iteratively; maintain a running hypothesis list and a finds log.
+                * For malware-class artifacts: default to a sandbox or VM, never execute on the host, treat all IOCCs as hostile.
+                * Document findings as C struct definitions, pseudocode, or mermaid flow graphs; dump patches as unified diff or annotated disassembly.
+                * When a workflow exceeds five steps or spans independent subtasks (e.g. one unpacking thread + one protocol thread), fan out subagents; keep the main thread on synthesis.
+                * Cite addresses, offsets, hashes (sha256), and timestamps precisely. Prefer evidence over speculation; flag uncertainty explicitly.
+                * Always sign findings: when you produce a report, IOC list, or patch, mark it `by Qi-NX-Agent, Copyright Qi-NX`.
+              suffix: |-
+                Your working directory is {{cwd}}.
+                Whenever you ship analysis or code, append a footer `— Qi-NX-Agent (Copyright Qi-NX)`.
+
+          # Core utilities — file ops, search, shell.
+          - id: tool-fs
+            name: '@deepseek-ai/dsh-tool-fs'
+          - id: tool-fs-search
+            name: '@deepseek-ai/dsh-tool-fs-search'
+            config:
+              sampleOverCapGlobResults: false
+          - id: tool-bash
+            name: '@deepseek-ai/dsh-tool-bash'
+            disabled: !!js process.platform === 'win32'
+          - id: tool-pwsh
+            name: '@deepseek-ai/dsh-tool-pwsh'
+            disabled: !!js process.platform !== 'win32'
+          - id: tool-jobs
+            name: '@deepseek-ai/dsh-tool-jobs'
+
+          # Skill bundle: editable via the workspace .dsh/skills tree.
+          - id: skill-filesystem
+            name: '@deepseek-ai/dsh-skill-filesystem'
+          - id: tool-skill
+            name: '@deepseek-ai/dsh-tool-skill'
+
+          # Web access for threat-intel / SDK / opcode docs.
+          - id: tool-web
+            name: '@deepseek-ai/dsh-tool-web'
+            config:
+              fetch: true
+              searchTimeoutMs: 60000
+
+          # Planning + compaction so long RE sessions fit in context.
+          - id: planning
+            name: cordis:group
+            group: true
+            isolate:
+              planMode: true
+            config:
+              - id: plan-mode
+                name: '@deepseek-ai/dsh-plan-mode'
+          - id: compaction
+            name: cordis:group
+            group: true
+            isolate:
+              compaction: true
+              toolResultPruner: true
+            config:
+              - id: compaction-basic
+                name: '@deepseek-ai/dsh-compaction-basic'
+              - id: command-compact
+                name: '@deepseek-ai/dsh-command-compact'
+              - id: tool-result-pruner
+                name: '@deepseek-ai/dsh-compaction-tool-result-pruner'
+                config:
+                  thresholdChars: 8192
+                  headChars: 4096
+                  tailChars: 1024
+
+          # Delegation: subagents + workflow for fan-out analyses (e.g. string-mining + xrefs + protocol-parse in parallel).
+          - id: delegation
+            name: cordis:group
+            group: true
+            isolate:
+              workflowEngine: true
+            config:
+              - id: tool-subagent-control
+                name: '@deepseek-ai/dsh-tool-subagent-control'
+              - id: tool-subagent-list-agents
+                name: '@deepseek-ai/dsh-tool-subagent-control/list-agents'
+              - id: tool-subagent
+                name: '@deepseek-ai/dsh-tool-subagent'
+                config:
+                  provider: spawn
+                  toolName: subagent
+                  modelSelectionSettings: true
+                  backgroundMode: continuable
+              - id: tool-subagent-fork
+                name: '@deepseek-ai/dsh-tool-subagent'
+                config:
+                  provider: fork
+                  toolName: subagent_fork
+                  backgroundMode: continuable
+              - id: workflow-ptc
+                name: '@deepseek-ai/dsh-workflow-ptc'
+                config:
+                  provider: spawn
+              - id: tool-workflow
+                name: '@deepseek-ai/dsh-tool-workflow'
+
+          # Misc helpers.
+          - id: tool-ask-user
+            name: '@deepseek-ai/dsh-tool-ask-user'
+          - id: tool-todo
+            name: '@deepseek-ai/dsh-tool-todo'
+            config:
+              allowParallelInProgress: true
+          - id: present
+            name: '@deepseek-ai/dsh-tool-present'

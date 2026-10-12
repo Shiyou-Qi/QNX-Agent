@@ -1,0 +1,10 @@
+{
+  "name": "@local/uefi-mcp",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Qi-NX UEFI MCP server bundle — firmware/UEFI reverse-engineering tools (walk_fv, extract_vss, parse_vss, list_smi, binwalk_scan, lief_info, yara_scan, pack_detect) exposed over MCP as mcp__uefi__*. Copyright Qi-NX.",
+  "author": "Qi-NX",
+  "license": "UNLICENSED",
+  "dsh": { "bundle": { "patch": "./cordis.patch.yml" } }
+}

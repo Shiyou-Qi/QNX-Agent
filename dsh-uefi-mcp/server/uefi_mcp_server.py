@@ -1,0 +1,534 @@
+#!/usr/bin/env python3
+"""Qi-NX UEFI MCP server — firmware / UEFI reverse-engineering tools over MCP.
+
+Exposes the Qi-NX firmware toolkit (and the LIEF/YARA helpers) as MCP tools so a
+DSH agent can call them as `mcp__uefi__<tool>` without shelling out.
+
+Design notes
+------------
+* Official `mcp` Python SDK (`mcp.server.mcpserver.MCPServer`). The SDK's latest
+  protocol revision is 2026-07-28, which is what the DSH MCP client prefers.
+* stdio transport: **nothing** may be written to stdout except JSON-RPC. All
+  diagnostics go to stderr.
+* Blocking file work runs in a worker thread so the server stays responsive to
+  protocol traffic and cancellation.
+* Tools that need an external binary (binwalk, UEFIExtract) report its absence
+  instead of pretending to succeed, and fall back to the dependency-free
+  implementation where one exists.
+
+Banner: by Qi-NX-Agent (Copyright Qi-NX)
+"""
+from __future__ import annotations
+
+import json
+import os
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+BANNER = "by Qi-NX-Agent (Copyright Qi-NX)"
+
+# --------------------------------------------------------------------------- #
+# Locate the Qi-NX script modules (firmware toolkit + LIEF/YARA helpers).
+# --------------------------------------------------------------------------- #
+
+
+def _workspace_root() -> Path:
+    """Return the workspace that contains this bundle.
+
+    The server lives at `<workspace>/dsh-uefi-mcp/server/uefi_mcp_server.py`, so
+    the workspace is two levels up. Deriving it from `__file__` keeps this bundle
+    free of machine-specific absolute paths while still needing no configuration
+    when it sits inside the workspace it serves.
+    """
+    return Path(__file__).resolve().parents[2]
+
+
+# Skill script trees, relative to the workspace root.
+DEFAULT_SCRIPT_DIRS = {
+    "fw_scripts": Path(".dsh") / "skills" / "firmware-uefi" / "scripts",
+    "re_scripts": Path(".dsh") / "skills" / "reverse-engineering" / "scripts",
+}
+
+# Optional override file beside the bundle. Not required, and not shipped with
+# any absolute paths: set the QINX_* environment variables instead if the bundle
+# lives outside the workspace it serves.
+_PATHS_FILE = "_paths.local.json"
+
+
+def _resolve_script_dirs() -> dict[str, Path]:
+    """Resolve the Qi-NX script directories.
+
+    Precedence: `QINX_FW_SCRIPTS` / `QINX_RE_SCRIPTS` environment variables, then
+    an optional `_paths.local.json` beside the bundle, then the self-located
+    default under the workspace that contains this bundle.
+    """
+    workspace = _workspace_root()
+    cfg_path = Path(__file__).resolve().parent.parent / _PATHS_FILE
+
+    cfg: dict = {}
+    if cfg_path.is_file():
+        try:
+            cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
+        except Exception as exc:  # noqa: BLE001
+            print(f"qinx-uefi-mcp: unreadable {cfg_path}: {exc}", file=sys.stderr)
+
+    resolved: dict[str, Path] = {}
+    for key, env in (("fw_scripts", "QINX_FW_SCRIPTS"),
+                     ("re_scripts", "QINX_RE_SCRIPTS")):
+        raw = os.environ.get(env) or cfg.get(key)
+        resolved[key] = Path(raw) if raw else (workspace / DEFAULT_SCRIPT_DIRS[key])
+    return resolved
+
+
+DIRS = _resolve_script_dirs()
+for _key, _dir in DIRS.items():
+    if _dir.is_dir():
+        sys.path.insert(0, str(_dir))
+    else:
+        print(f"qinx-uefi-mcp: {_key} is not a directory: {_dir}", file=sys.stderr)
+
+# Imported after sys.path is prepared.
+import walk_fv            # noqa: E402
+import extract_vss        # noqa: E402
+import vss_parse          # noqa: E402
+import list_smi           # noqa: E402
+
+try:
+    import lief_info      # noqa: E402
+except Exception as exc:  # noqa: BLE001
+    lief_info = None
+    print(f"qinx-uefi-mcp: lief_info unavailable: {exc}", file=sys.stderr)
+
+try:
+    import yara_scan      # noqa: E402
+except Exception as exc:  # noqa: BLE001
+    yara_scan = None
+    print(f"qinx-uefi-mcp: yara_scan unavailable: {exc}", file=sys.stderr)
+
+try:
+    import pack_detect    # noqa: E402
+except Exception as exc:  # noqa: BLE001
+    pack_detect = None
+    print(f"qinx-uefi-mcp: pack_detect unavailable: {exc}", file=sys.stderr)
+
+
+# --------------------------------------------------------------------------- #
+# Dependency-free firmware signature scan (the binwalk fallback).
+# --------------------------------------------------------------------------- #
+
+# (label, needle, weak) — `weak` magics are short/ambiguous and are only
+# reported on alignment.
+SIGNATURES: list[tuple[str, bytes, bool]] = [
+    ("uefi-firmware-volume(_FVH)", b"_FVH", False),
+    ("intel-flash-descriptor", b"\x5a\xa5\xf0\x0f", False),
+    ("intel-me($FPT)", b"$FPT", False),
+    ("gzip", b"\x1f\x8b\x08", False),
+    ("xz", b"\xfd7zXZ\x00", False),
+    ("bzip2", b"BZh", True),
+    ("zstd", b"\x28\xb5\x2f\xfd", False),
+    ("lz4-frame", b"\x04\x22\x4d\x18", False),
+    ("lzma-alone", b"\x5d\x00\x00", True),
+    ("7-zip", b"7z\xbc\xaf\x27\x1c", False),
+    ("rar", b"Rar!\x1a\x07", False),
+    ("squashfs-le", b"hsqs", False),
+    ("squashfs-be", b"sqsh", False),
+    ("cramfs", b"\x45\x3d\xcd\x28", False),
+    ("ubi", b"UBI#", False),
+    ("jffs2-le", b"\x85\x19", True),
+    ("jffs2-be", b"\x19\x85", True),
+    ("android-boot", b"ANDROID!", False),
+    ("fit-or-dtb", b"\xd0\x0d\xfe\xed", False),
+    ("elf", b"\x7fELF", False),
+    ("pe(MZ)", b"MZ", True),
+    ("tiano-custom-decompress-guid", None, False),   # filled below
+    ("lzma-custom-decompress-guid", None, False),    # filled below
+]
+
+_TIANO_GUIDS = (
+    ("tiano-custom-decompress-guid", "A31280AD-481E-41B6-95E8-127F4C984779"),
+    ("lzma-custom-decompress-guid", "EE4E5898-3914-4259-9D6E-DC7BD79403CF"),
+)
+
+
+def _wire_guid(canonical: str) -> bytes | None:
+    return list_smi.guid_to_wire(canonical)
+
+
+def _build_signatures() -> list[tuple[str, bytes, bool]]:
+    out: list[tuple[str, bytes, bool]] = []
+    guid_map = {name: _wire_guid(g) for name, g in _TIANO_GUIDS}
+    for label, needle, weak in SIGNATURES:
+        if needle is None:
+            wire = guid_map.get(label)
+            if wire:
+                out.append((label, wire, weak))
+            continue
+        out.append((label, needle, weak))
+    return out
+
+
+SIGNATURE_TABLE = _build_signatures()
+
+
+def signature_scan(path: Path, max_hits_per_sig: int = 16,
+                   max_total: int = 200) -> dict:
+    """Scan for firmware/compression magic values without external tools."""
+    data = path.read_bytes()
+    hits: list[dict] = []
+    total = 0
+    for label, needle, weak in SIGNATURE_TABLE:
+        if not needle or total >= max_total:
+            continue
+        found = 0
+        idx = 0
+        while found < max_hits_per_sig and total < max_total:
+            i = data.find(needle, idx)
+            if i < 0:
+                break
+            idx = i + 1
+            if weak and (i % 4) != 0:
+                continue
+            hits.append({"signature": label, "offset": hex(i), "weak": weak})
+            found += 1
+            total += 1
+    hits.sort(key=lambda h: int(h["offset"], 16))
+    return {
+        "attempted": "internal-signature-scan",
+        "scanner": "qi-nx internal signatures (binwalk not used)",
+        "size": len(data),
+        "hit_total": len(hits),
+        "signatures_known": len(SIGNATURE_TABLE),
+        "hits": hits,
+        "limitations": [
+            "no entropy analysis and no recursive extraction",
+            "install binwalk for full carving (the binwalk_scan tool will use it)",
+            "short magics are only reported on 4-byte alignment and flagged weak",
+        ],
+    }
+
+
+def _which(name: str) -> str | None:
+    return shutil.which(name)
+
+
+# --------------------------------------------------------------------------- #
+# MCP server + tools
+# --------------------------------------------------------------------------- #
+
+try:
+    from mcp.server.mcpserver import MCPServer
+except Exception as exc:  # pragma: no cover
+    print(f"qinx-uefi-mcp: the `mcp` SDK is required (pip install mcp): {exc}",
+          file=sys.stderr)
+    raise
+
+server = MCPServer(
+    name="qinx-uefi",
+    version="1.0.0",
+    instructions=(
+        "Qi-NX firmware / UEFI reverse-engineering toolkit. " + BANNER + ".\n"
+        "Typical flow: tool_status -> walk_fv -> extract_vss -> parse_vss, and "
+        "list_smi for Ring -2 modules. Use binwalk_scan for early magic-offset "
+        "triage. Prefer walk_fv over uefi_walk: walk_fv parses PI structures "
+        "directly and extracts PE32/TE sections for lief_info / yara_scan."
+    ),
+)
+
+
+async def _in_thread(fn, *args, **kwargs):
+    """Run blocking file work off the event loop when anyio is available."""
+    try:
+        import anyio
+        return await anyio.to_thread.run_sync(lambda: fn(*args, **kwargs))
+    except ImportError:
+        return fn(*args, **kwargs)
+
+
+def _dumps(obj) -> str:
+    return json.dumps(obj, indent=2, default=str)
+
+
+@server.tool(description="Report which Qi-NX tools, Python modules and external "
+                         "binaries are available in this environment.")
+async def tool_status() -> str:
+    def collect() -> dict:
+        def mod(name: str):
+            try:
+                __import__(name)
+                return "available"
+            except Exception as e:  # noqa: BLE001
+                return f"unavailable ({e.__class__.__name__})"
+
+        return {
+            "author": "Qi-NX",
+            "script_dirs": {k: str(v) for k, v in DIRS.items()},
+            "script_modules": {
+                "walk_fv": "available",
+                "extract_vss": "available",
+                "vss_parse": "available",
+                "list_smi": "available",
+                "lief_info": "available" if lief_info else "unavailable",
+                "yara_scan": "available" if yara_scan else "unavailable",
+                "pack_detect": "available" if pack_detect else "unavailable",
+            },
+            "python_modules": {
+                "lief": mod("lief"),
+                "yara": mod("yara"),
+                "uefi_firmware": mod("uefi_firmware"),
+                "mcp": mod("mcp"),
+            },
+            "external_binaries": {
+                "binwalk": _which("binwalk") or "absent",
+                "UEFIExtract": _which("UEFIExtract") or _which("uefitool") or "absent",
+                "chipsec_main": _which("chipsec_main") or "absent",
+            },
+            "fallbacks": {
+                "binwalk_scan": "falls back to the internal signature scan",
+                "uefitool_extract": "no fallback; walk_fv --extract covers PE32/TE",
+            },
+        }
+
+    return _dumps(await _in_thread(collect))
+
+
+@server.tool(name="walk_fv",
+             description="Walk UEFI firmware volumes, FFS files and sections "
+                         "(PI-spec parsing, no external dependency). Optionally "
+                         "extract PE32/TE sections to a directory.")
+async def walk_fv_(image: str, extract_dir: str | None = None,
+                   max_files: int = 5000) -> str:
+    def run() -> dict:
+        p = Path(image)
+        if not p.is_file():
+            return {"error": f"not a file: {p}"}
+        info = walk_fv.walk(p, extract_dir, max_files)
+        # Keep the response bounded: section detail is where the bulk lives.
+        if len(info["firmware_volumes"]) > 8:
+            info["notes"].append(
+                f"response truncated to 8 of {len(info['firmware_volumes'])} FVs")
+            info["firmware_volumes"] = info["firmware_volumes"][:8]
+        return info
+
+    return _dumps(await _in_thread(run))
+
+
+@server.tool(name="extract_vss",
+             description="Carve candidate UEFI NVRAM variable stores (VSS) out of "
+                         "an image into a directory, validating each candidate by "
+                         "walking its 0x55AA variable headers.")
+async def extract_vss_(image: str, out_dir: str, raw_scan: bool = False,
+                       size_cap: int = 0x40000) -> str:
+    def run() -> dict:
+        p = Path(image)
+        if not p.is_file():
+            return {"error": f"not a file: {p}"}
+        return extract_vss.extract(p, out_dir, size_cap, raw_scan)
+
+    return _dumps(await _in_thread(run))
+
+
+@server.tool(name="parse_vss",
+             description="Decode UEFI NVRAM variables from an image or from a "
+                         "store carved by extract_vss. Flags sensitive variables "
+                         "(SecureBoot, PK/KEK/db/dbx, Setup, Boot####).")
+async def parse_vss(image: str, variable: str | None = None) -> str:
+    def run() -> dict:
+        p = Path(image)
+        if not p.is_file():
+            return {"error": f"not a file: {p}"}
+        return vss_parse.parse(p, variable)
+
+    return _dumps(await _in_thread(run))
+
+
+@server.tool(name="list_smi",
+             description="Enumerate SMM/MM modules (Ring -2) in a firmware image "
+                         "or analyse one extracted module, reporting EDK2 dispatch "
+                         "and communication markers. Optionally search GUIDs from "
+                         "an authoritative Name,GUID CSV such as UEFITool's "
+                         "guids.csv.")
+async def list_smi_(image: str, guids: str | None = None,
+                    include_dxe: bool = False,
+                    extract_dir: str | None = None) -> str:
+    def run() -> dict:
+        p = Path(image)
+        if not p.is_file():
+            return {"error": f"not a file: {p}"}
+        return list_smi.list_smm(p, guids, extract_dir, include_dxe)
+
+    return _dumps(await _in_thread(run))
+
+
+@server.tool(description="Parse a firmware image with the optional "
+                         "`uefi-firmware` library, which handles compressed "
+                         "sections that walk_fv reports but does not decompress.")
+async def uefi_firmware_parse(image: str, max_objects: int = 400) -> str:
+    def run() -> dict:
+        p = Path(image)
+        if not p.is_file():
+            return {"error": f"not a file: {p}"}
+        try:
+            from uefi_firmware import AutoParser  # type: ignore
+        except Exception as e:  # noqa: BLE001
+            return {
+                "error": "the `uefi-firmware` library is not installed",
+                "hint": "python -m pip install uefi-firmware",
+                "detail": str(e),
+                "fallback": "use walk_fv, which needs no dependency",
+            }
+        parser = AutoParser(str(p))
+        objects = []
+        try:
+            for obj in parser.parse().iterate_objects():
+                if len(objects) >= max_objects:
+                    break
+                objects.append({
+                    "type": obj.get("type"),
+                    "guid": obj.get("guid"),
+                    "offset": hex(obj.get("offset", 0)),
+                    "size": obj.get("size"),
+                    "name": obj.get("name"),
+                })
+        except Exception as e:  # noqa: BLE001
+            return {"error": f"uefi_firmware parse failed: {e}", "objects": objects}
+        return {
+            "tool": "qi-nx-uefi-firmware-parse",
+            "author": "Qi-NX",
+            "image": str(p),
+            "object_total": len(objects),
+            "objects": objects,
+        }
+
+    return _dumps(await _in_thread(run))
+
+
+@server.tool(description="Magic/compression signature scan for early firmware "
+                         "triage. Uses binwalk when it is installed; otherwise "
+                         "falls back to the built-in dependency-free scanner and "
+                         "says so.")
+async def binwalk_scan(image: str) -> str:
+    def run() -> dict:
+        p = Path(image)
+        if not p.is_file():
+            return {"error": f"not a file: {p}"}
+        binwalk = _which("binwalk")
+        if binwalk:
+            try:
+                proc = subprocess.run(
+                    [binwalk, str(p)],
+                    capture_output=True, text=True, timeout=300,
+                )
+                return {
+                    "attempted": "binwalk",
+                    "scanner": f"binwalk ({binwalk})",
+                    "exit_code": proc.returncode,
+                    "stdout": proc.stdout[-20000:],
+                    "stderr": proc.stderr[-4000:],
+                }
+            except Exception as e:  # noqa: BLE001
+                return {
+                    "attempted": "binwalk",
+                    "error": f"binwalk failed: {e}",
+                    "fallback": signature_scan(p),
+                }
+        return signature_scan(p)
+
+    return _dumps(await _in_thread(run))
+
+
+@server.tool(description="Run UEFIExtract (from UEFITool) to unpack a firmware "
+                         "image. Reports a clear error when the binary is absent; "
+                         "walk_fv's extract_dir covers PE32/TE extraction without it.")
+async def uefitool_extract(image: str, out_dir: str) -> str:
+    def run() -> dict:
+        p = Path(image)
+        if not p.is_file():
+            return {"error": f"not a file: {p}"}
+        exe = _which("UEFIExtract") or _which("uefiextract")
+        if not exe:
+            return {
+                "error": "UEFIExtract is not installed or not on PATH",
+                "hint": "install UEFITool (https://github.com/LongSoft/UEFITool) "
+                        "and put UEFIExtract on PATH",
+                "fallback": "call walk_fv_ with extract_dir to pull PE32/TE sections",
+            }
+        out = Path(out_dir)
+        out.mkdir(parents=True, exist_ok=True)
+        try:
+            proc = subprocess.run(
+                [exe, str(p), "-e", "-o", str(out)],
+                capture_output=True, text=True, timeout=1800,
+            )
+        except Exception as e:  # noqa: BLE001
+            return {"error": f"UEFIExtract failed: {e}"}
+        return {
+            "attempted": "UEFIExtract",
+            "scanner": exe,
+            "out_dir": str(out),
+            "exit_code": proc.returncode,
+            "stdout": proc.stdout[-8000:],
+            "stderr": proc.stderr[-4000:],
+        }
+
+    return _dumps(await _in_thread(run))
+
+
+@server.tool(name="lief_info",
+             description="LIEF triage (format, arch, entrypoint, sections, "
+                         "imports, exports) for PE/ELF/Mach-O and firmware "
+                         "components extracted from an image.")
+async def lief_info_(target: str, sections: bool = False, imports: bool = False,
+                     exports: bool = False, relocs: bool = False) -> str:
+    if lief_info is None:
+        return _dumps({"error": "lief_info module unavailable"})
+
+    def run() -> dict:
+        return lief_info.info(target, sections, imports, exports, relocs)
+
+    return _dumps(await _in_thread(run))
+
+
+@server.tool(name="yara_scan",
+             description="YARA scan with the built-in Qi-NX triage ruleset "
+                         "(packers, crypto constants, IOCs) or your own rule "
+                         "file/directory.")
+async def yara_scan_(target: str, rules: str | None = None,
+                     max_matches: int = 100) -> str:
+    if yara_scan is None:
+        return _dumps({"error": "yara_scan module unavailable"})
+
+    def run() -> dict:
+        return yara_scan.scan(target, rules, max_matches)
+
+    return _dumps(await _in_thread(run))
+
+
+@server.tool(name="pack_detect",
+             description="Packer / protector detection from section names, "
+                         "entropy and import-table shape, with a verdict and a "
+                         "confidence note.")
+async def pack_detect_(target: str) -> str:
+    if pack_detect is None:
+        return _dumps({"error": "pack_detect module unavailable"})
+
+    def run() -> dict:
+        p = Path(target)
+        if not p.is_file():
+            return {"error": f"not a file: {p}"}
+        return pack_detect.detect(p)
+
+    return _dumps(await _in_thread(run))
+
+
+def main() -> int:
+    print(f"qinx-uefi-mcp starting — {BANNER}", file=sys.stderr)
+    print(f"qinx-uefi-mcp script dirs: "
+          f"{ {k: str(v) for k, v in DIRS.items()} }", file=sys.stderr)
+    server.run(transport="stdio")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

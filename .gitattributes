@@ -1,0 +1,14 @@
+# Keep LF in the repository for text files.
+#
+# This matters concretely here: the Python scripts in .dsh/skills/*/scripts/ and
+# tests/ carry `#!/usr/bin/env python3` shebangs, and a CRLF shebang line makes
+# them unrunnable on Linux/macOS ("bad interpreter"). Normalising to LF on
+# checkout also stops line-ending churn between platforms.
+* text=auto
+*.py text eol=lf
+*.md text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.json text eol=lf
+*.gitignore text eol=lf
+*.gitattributes text eol=lf

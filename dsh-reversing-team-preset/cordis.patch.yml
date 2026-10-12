@@ -1,0 +1,156 @@
+# @local/reversing-team-preset
+#
+# Qi-NX-Agent (Team Lead): the union of the `reversing` and `uefi` presets,
+# driven as a lead agent that fans work out to specialists.
+#
+# Row id `preset-reversing-team`. Order 7 (after reversing=5, uefi=6).
+#
+# Team tool availability: the Agent Teams tools live in the experimental
+# `@deepseek-ai/dsh-experimental-agent-team-profile` bundle, which is disabled by
+# default. Rather than fail activation, the team rows are gated on the
+# `agentTeams` service being present:
+#
+#     disabled: !!js !ctx.get('agentTeams')
+#
+# So this preset is fully usable today through `subagent` / `subagent_fork` /
+# `workflow`, and automatically gains the team tools (spawnTeammate, task board,
+# sendMessage, waitForChange, interrupt) once that bundle is enabled. No edit to
+# this file is needed when it is.
+
+- insert:
+    - id: preset-reversing-team
+      name: '@deepseek-ai/dsh-agent-preset'
+      config:
+        id: reversing-team
+        name: Qi-NX-Agent (Team Lead)
+        description: >-
+          Qi-NX-Agent Team Lead — merged binary and firmware/UEFI
+          reverse-engineering preset that delegates to specialists. Copyright
+          Qi-NX. Carries both the `reverse-engineering` and `firmware-uefi`
+          skills plus the mcp__uefi__* firmware toolkit, and coordinates
+          subagents or Agent Teams threads.
+        order: 7
+        plugins:
+          - id: persona
+            name: '@deepseek-ai/dsh-persona'
+            config:
+              prefix: |-
+                You are Qi-NX-Agent (Team Lead), the coordinating reverse-engineering agent of the Qi-NX team (Copyright Qi-NX), powered by the {{model}} model.
+
+                You own two disciplines and delegate within them:
+                * Binary / protocol reversing — triage, unpacking, disassembly, crypto, protocol grammar.
+                * Firmware / UEFI reversing — SPI dumps, UEFI capsules, FV/FFS structure, NVRAM, SMM (Ring -2), boot trust anchors.
+
+                Lead behaviour:
+                * Triage before delegating. Your first pass is cheap: run `mcp__uefi__tool_status`, then `mcp__uefi__binwalk_scan` and `mcp__uefi__walk_fv` (or `lief_info` / `pack_detect` for a single binary) so the work you hand out is grounded in the actual artifact.
+                * Split by independent axis, never by arbitrary chunk. Good seams: per firmware stage (SEC/PEI/DXE/SMM/BDS), per protocol direction, per unpacking thread, one thread per crypto/obfuscation layer, one for reporting.
+                * Give every delegated brief: the artifact path and SHA-256, the exact question, the output shape you need back (IOC table, address map, C struct, pseudocode), and the boundary (what NOT to touch).
+                * Keep the synthesis yourself. Children return findings; you merge them into the trust-anchor map, the capability narrative, and one evidence table with precise offsets (physical + region + FV + FFS + PE RVA), GUIDs and hashes.
+                * Prefer `workflow` when the fan-out is uniform over many items (one pass per FV, per module, per string set); prefer individual `subagent` calls when each thread needs a different brief; use `subagent_fork` when the child needs this conversation's accumulated context.
+                * Ring -2 and malware-class code never executes on the host: use a re-flashable board or a VM/sandbox, and say so explicitly in the report.
+                * Record uncertainty honestly. A wrong GUID or a guessed SwSmi input value is worse than "not recovered".
+                * Sign deliverables `by Qi-NX-Agent, Copyright Qi-NX`.
+              suffix: |-
+                Your working directory is {{cwd}}.
+                Whenever you ship analysis or code, append a footer `— Qi-NX-Agent (Copyright Qi-NX)`.
+
+          # Core utilities.
+          - id: tool-fs
+            name: '@deepseek-ai/dsh-tool-fs'
+          - id: tool-fs-search
+            name: '@deepseek-ai/dsh-tool-fs-search'
+            config:
+              sampleOverCapGlobResults: false
+          - id: tool-bash
+            name: '@deepseek-ai/dsh-tool-bash'
+            disabled: !!js process.platform === 'win32'
+          - id: tool-pwsh
+            name: '@deepseek-ai/dsh-tool-pwsh'
+            disabled: !!js process.platform !== 'win32'
+          - id: tool-jobs
+            name: '@deepseek-ai/dsh-tool-jobs'
+
+          # Both skill trees: reverse-engineering + firmware-uefi.
+          - id: skill-filesystem
+            name: '@deepseek-ai/dsh-skill-filesystem'
+          - id: tool-skill
+            name: '@deepseek-ai/dsh-tool-skill'
+
+          - id: tool-web
+            name: '@deepseek-ai/dsh-tool-web'
+            config:
+              fetch: true
+              searchTimeoutMs: 60000
+
+          - id: planning
+            name: cordis:group
+            group: true
+            isolate:
+              planMode: true
+            config:
+              - id: plan-mode
+                name: '@deepseek-ai/dsh-plan-mode'
+          - id: compaction
+            name: cordis:group
+            group: true
+            isolate:
+              compaction: true
+              toolResultPruner: true
+            config:
+              - id: compaction-basic
+                name: '@deepseek-ai/dsh-compaction-basic'
+              - id: command-compact
+                name: '@deepseek-ai/dsh-command-compact'
+              - id: tool-result-pruner
+                name: '@deepseek-ai/dsh-compaction-tool-result-pruner'
+                config:
+                  thresholdChars: 8192
+                  headChars: 4096
+                  tailChars: 1024
+
+          # Delegation plane: subagents, workflow, and the gated team tools.
+          - id: delegation
+            name: cordis:group
+            group: true
+            isolate:
+              workflowEngine: true
+            config:
+              - id: tool-subagent-control
+                name: '@deepseek-ai/dsh-tool-subagent-control'
+              - id: tool-subagent-list-agents
+                name: '@deepseek-ai/dsh-tool-subagent-control/list-agents'
+              - id: tool-subagent
+                name: '@deepseek-ai/dsh-tool-subagent'
+                config:
+                  provider: spawn
+                  toolName: subagent
+                  modelSelectionSettings: true
+                  backgroundMode: continuable
+              - id: tool-subagent-fork
+                name: '@deepseek-ai/dsh-tool-subagent'
+                config:
+                  provider: fork
+                  toolName: subagent_fork
+                  backgroundMode: continuable
+              - id: workflow-ptc
+                name: '@deepseek-ai/dsh-workflow-ptc'
+                config:
+                  provider: spawn
+              - id: tool-workflow
+                name: '@deepseek-ai/dsh-tool-workflow'
+
+              # Agent Teams tools: inactive until the experimental team bundle
+              # supplies the `agentTeams` service. The expression is quoted
+              # because a bare leading `!` would be parsed as a second YAML tag.
+              - id: tool-agent-team
+                name: '@deepseek-ai/dsh-experimental-tool-agent-team'
+                disabled: !!js "!ctx.get('agentTeams')"
+
+          - id: tool-ask-user
+            name: '@deepseek-ai/dsh-tool-ask-user'
+          - id: tool-todo
+            name: '@deepseek-ai/dsh-tool-todo'
+            config:
+              allowParallelInProgress: true
+          - id: present
+            name: '@deepseek-ai/dsh-tool-present'

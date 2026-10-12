@@ -1,0 +1,54 @@
+# @local/uefi-mcp
+#
+# Brings the Qi-NX UEFI MCP server up on the Host plane. One mcp-client row with
+# serverName `uefi`; every tool it publishes becomes callable as
+# `mcp__uefi__<tool>`:
+#
+#   tool_status, walk_fv, extract_vss, parse_vss, list_smi,
+#   uefi_firmware_parse, binwalk_scan, uefitool_extract,
+#   lief_info, yara_scan, pack_detect
+#
+# The server is `server/uefi_mcp_server.py`. It locates the Qi-NX skill scripts
+# from its own path, so this row needs no machine-specific absolute paths.
+#
+# Two things may still need pointing at your machine:
+#
+#   1. `command` — an interpreter that has the `mcp` package installed. The
+#      default is whatever `python` resolves to on PATH; DSH's bundled runtime
+#      is usually NOT on PATH, so most installs override this.
+#   2. `cwd` — the workspace root, used to resolve the relative script path
+#      below. Set `QINX_WORKSPACE`, or override this row.
+#
+# Recommended: leave this file alone and override it in your own profile patch
+# (`$DSH_HOME/profiles/<profile>/cordis.patch.yml`), which is not versioned with
+# this bundle. A profile patch addresses the row by id and its config replaces
+# this one wholesale:
+#
+#   - id: uefi-mcp
+#     name: '@deepseek-ai/dsh-mcp-client'
+#     config:
+#       serverName: uefi
+#       transport: stdio
+#       command: '/absolute/path/to/python'
+#       args: ['/absolute/path/to/dsh-uefi-mcp/server/uefi_mcp_server.py']
+#       cwd: '/absolute/path/to/workspace'
+#       toolCallTimeoutMs: 120000
+#       failOnStartupError: false
+#
+# Do not add a second mcp-client row with `serverName: uefi`: the second one
+# fails to load, because server names must be unique per registration scope.
+
+- insert:
+    - id: uefi-mcp
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        serverName: uefi
+        transport: stdio
+        command: !!js process.env.QINX_PYTHON || 'python'
+        args:
+          - 'dsh-uefi-mcp/server/uefi_mcp_server.py'
+        cwd: !!js process.env.QINX_WORKSPACE || '.'
+        toolCallTimeoutMs: 120000
+        # Keep the harness startable even if the server is broken; `tool_status`
+        # then reports what is missing instead of blocking startup.
+        failOnStartupError: false
