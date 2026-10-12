@@ -1,0 +1,27 @@
+{
+  "name": "qi-nx-agent",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Qi-NX-Agent — reverse-engineering agents for DeepSeek Harness: three Agent presets, a local MCP server, and a Python toolkit for binaries and firmware. Copyright Qi-NX.",
+  "author": "Qi-NX",
+  "license": "UNLICENSED",
+  "keywords": [
+    "dsh",
+    "deepseek-harness",
+    "reverse-engineering",
+    "uefi",
+    "firmware",
+    "mcp"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": [
+        "./dsh-reversing-preset/cordis.patch.yml",
+        "./dsh-uefi-preset/cordis.patch.yml",
+        "./dsh-reversing-team-preset/cordis.patch.yml",
+        "./dsh-uefi-mcp/cordis.patch.yml"
+      ]
+    }
+  }
+}

@@ -53,9 +53,10 @@ Nine scripts, all usable standalone (`--json` supported) or through MCP.
 ```
 .
 ├── README.md                      this file
-├── dsh-reversing-preset/          preset `reversing`
-├── dsh-uefi-preset/               preset `uefi`
-├── dsh-reversing-team-preset/     preset `reversing-team`
+├── package.json                   the whole kit as ONE installable bundle
+├── dsh-reversing-preset/          preset `reversing`      (also a standalone bundle)
+├── dsh-uefi-preset/               preset `uefi`           (also a standalone bundle)
+├── dsh-reversing-team-preset/     preset `reversing-team` (also a standalone bundle)
 ├── dsh-uefi-mcp/                  MCP server + its bundle patch
 ├── tests/                         reproducible verification
 └── .dsh/skills/
@@ -63,19 +64,39 @@ Nine scripts, all usable standalone (`--json` supported) or through MCP.
     └── firmware-uefi/             SKILL.md + scripts/
 ```
 
-Each preset is a standard DSH bundle: a `package.json` declaring
-`dsh.bundle.patch`, and a `cordis.patch.yml` inserting one
-`@deepseek-ai/dsh-agent-preset` row.
+The root `package.json` is a **composition bundle**: its `dsh.bundle.patch` is an
+array pointing at the four sub-patches, so installing the repository once
+registers all four rows with no duplicated content. That's what makes
+`github:<owner>/Qi-NX-Agent` a valid install target.
+
+Each subdirectory is also a standard DSH bundle on its own: a `package.json`
+declaring `dsh.bundle.patch`, and a `cordis.patch.yml` inserting its rows.
 
 ---
 
 ## Install
 
-Bundles are installed into the DSH profile and apply live:
+**Pick one of the two modes — do not install both.** The root bundle and the
+four sub-bundles declare the *same* row ids (`preset-reversing`, `preset-uefi`,
+`preset-reversing-team`, `uefi-mcp`); installing both leaves duplicate
+declarations for the same rows.
+
+### Mode A — the whole kit, from the repository
+
+```
+plugin_manager  action=install_bundle  target=github:Shiyou-Qi/Qi-NX-Agent
+```
+
+One package, four rows. This is the mode a cloner gets.
+
+### Mode B — individual bundles, by directory path
 
 ```
 plugin_manager  action=install_bundle  target=<absolute path to a bundle dir>
 ```
+
+Better while developing one bundle: you can toggle it alone without reloading
+the others.
 
 Then select the preset per session in the GUI. To remove:
 
@@ -90,6 +111,10 @@ because the bundle is already present. Toggle it instead:
 plugin_manager  action=set_bundle  target=@local/dsh-uefi-preset  enabled=false
 plugin_manager  action=set_bundle  target=@local/dsh-uefi-preset  enabled=true
 ```
+
+`remove_bundle` can report `bundle-in-use` while a live session is using the
+bundle's rows — for example while `mcp__uefi__*` tools are callable. Remove it
+after a restart, or disable it first.
 
 ---
 
