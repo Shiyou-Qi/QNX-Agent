@@ -216,22 +216,41 @@ version than DSH uses.
 
 ## Team tools
 
-`reversing-team` works today through `subagent`, `subagent_fork` and `workflow`.
-Its Agent-Teams rows are gated:
-
-```yaml
-disabled: !!js "!ctx.get('agentTeams')"
-```
-
-so they activate automatically once the experimental bundle is enabled — no file
-change needed:
+`reversing-team` always provides `subagent`, `subagent_fork` and `workflow`. The
+Agent Teams tools (`spawnTeammate`, the task board, `sendMessage`,
+`waitForChange`) come from the experimental bundle, which publishes `agent-team`
+and `tool-agent-team` on the **Host plane**:
 
 ```
 plugin_manager  action=set_bundle  target=@deepseek-ai/dsh-experimental-agent-team-profile  enabled=true
 ```
 
-Be aware that this is a profile-wide live change: it overrides the
+Presets do not — and must not — declare those row ids themselves. Two rules
+govern this, both learned the hard way:
+
+- **A preset must not declare a row id the Host plane already provides.** The
+  preset-plane gate resolves row ids across planes, so a duplicate declaration
+  breaks the preset's activation even when the preset's copy is `disabled`.
+- **A preset must not declare a row id whose module may be absent.** With the
+  team bundle disabled, `@deepseek-ai/dsh-experimental-tool-agent-team` is not
+  installed at all, so a declared row cannot resolve.
+
+An earlier revision of `reversing-team` gated its `tool-agent-team` row with
+`disabled: !!js "!ctx.get('agentTeams')"`. That fails in *both* configurations —
+which is why the row is gone. Host-plane tools are visible to every preset
+automatically, so nothing is lost.
+
+Be aware that enabling the bundle is a profile-wide live change: it overrides the
 `tool-subagent*` rows for **every** session. Reversible with `enabled=false`.
+
+### A note on profile breakage
+
+If presets stop loading, check `$DSH_HOME/profiles/<profile>/cordis.yml`. It is
+the profile root and must stay an **empty entry list** (`[]`); the tree is built
+by the bundle patches. If it has been rewritten as a full entry list, the
+bundles' `insert:` rows are declared twice and row addressing degrades — presets
+show as failing with no `patchId`. Restoring it to `[]` rebuilds the tree from
+the patches.
 
 ---
 

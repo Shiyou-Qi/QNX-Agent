@@ -139,12 +139,15 @@
               - id: tool-workflow
                 name: '@deepseek-ai/dsh-tool-workflow'
 
-              # Agent Teams tools: inactive until the experimental team bundle
-              # supplies the `agentTeams` service. The expression is quoted
-              # because a bare leading `!` would be parsed as a second YAML tag.
-              - id: tool-agent-team
-                name: '@deepseek-ai/dsh-experimental-tool-agent-team'
-                disabled: !!js "!ctx.get('agentTeams')"
+              # Agent Teams tools are deliberately NOT declared here.
+              # The experimental team bundle publishes `agent-team` and
+              # `tool-agent-team` on the Host plane, so every preset already sees
+              # them. Declaring them here too collides with the Host plane and
+              # breaks this preset's activation. With that bundle disabled the
+              # module `@deepseek-ai/dsh-experimental-tool-agent-team` is not even
+              # installed, so a declared row could not resolve either. Both ways,
+              # declaring it fails — so delegation tools above are the preset's
+              # own, and team tools arrive from the Host plane when available.
 
           - id: tool-ask-user
             name: '@deepseek-ai/dsh-tool-ask-user'
