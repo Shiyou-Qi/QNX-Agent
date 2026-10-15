@@ -18,8 +18,6 @@ Design notes
 
 Banner: by Qi-NX-Agent (Copyright Qi-NX)
 """
-from __future__ import annotations
-
 import json
 import os
 import shutil
@@ -219,20 +217,35 @@ def _which(name: str) -> str | None:
 
 try:
     from mcp.server.mcpserver import MCPServer
-except Exception as exc:  # pragma: no cover
-    print(f"qinx-uefi-mcp: the `mcp` SDK is required (pip install mcp): {exc}",
-          file=sys.stderr)
-    raise
+except ImportError:
+    # The official SDK exposed FastMCP before MCPServer was available at this
+    # import path. Keep the same decorator/run surface across supported releases.
+    try:
+        from mcp.server.fastmcp import FastMCP
+
+        class MCPServer(FastMCP):
+            def __init__(self, name: str, version: str | None = None,
+                         instructions: str | None = None):
+                # FastMCP 1.x derives its protocol version from the SDK and does
+                # not accept the MCPServer 2.x `version` constructor argument.
+                super().__init__(name=name, instructions=instructions)
+    except ImportError as exc:  # pragma: no cover
+        print(f"qinx-uefi-mcp: the `mcp` SDK is required (pip install mcp): {exc}",
+              file=sys.stderr)
+        raise
 
 server = MCPServer(
     name="qinx-uefi",
     version="1.0.0",
     instructions=(
         "Qi-NX firmware / UEFI reverse-engineering toolkit. " + BANNER + ".\n"
-        "Typical flow: tool_status -> walk_fv -> extract_vss -> parse_vss, and "
-        "list_smi for Ring -2 modules. Use binwalk_scan for early magic-offset "
-        "triage. Prefer walk_fv over uefi_walk: walk_fv parses PI structures "
-        "directly and extracts PE32/TE sections for lief_info / yara_scan."
+        "Choose tools from observed evidence: start with tool_status and "
+        "binwalk_scan; use walk_fv when firmware-volume signatures or a BIOS "
+        "region are present; use extract_vss/parse_vss when NVRAM is relevant; "
+        "use list_smi for MM/SMM leads. If compressed sections appear, decompress "
+        "with an available parser and re-walk the extracted output. Prefer walk_fv "
+        "over uefi_walk for PI-structure parsing and PE32/TE extraction. Treat "
+        "heuristics and string markers as leads, not final vulnerability verdicts."
     ),
 )
 
@@ -241,9 +254,9 @@ async def _in_thread(fn, *args, **kwargs):
     """Run blocking file work off the event loop when anyio is available."""
     try:
         import anyio
-        return await anyio.to_thread.run_sync(lambda: fn(*args, **kwargs))
     except ImportError:
         return fn(*args, **kwargs)
+    return await anyio.to_thread.run_sync(lambda: fn(*args, **kwargs))
 
 
 def _dumps(obj) -> str:

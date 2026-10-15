@@ -19,6 +19,7 @@ Exit code 0 = all checks passed; 1 = at least one failed.
 from __future__ import annotations
 
 import json
+import importlib.util
 import shutil
 import subprocess
 import sys
@@ -127,7 +128,7 @@ def main() -> int:
     chk.section("3. walk_fv: PI structures and section extraction")
     ex_dir = ARTIFACTS / "extracted"
     wf = run_json(FW_SCRIPTS / "walk_fv.py", str(fixture_path), "--extract", str(ex_dir))
-    if "_error" in wf:
+    if "error" in wf:
         chk.check("walk_fv produced JSON", False, wf)
     else:
         fvs = wf.get("firmware_volumes", [])
@@ -159,6 +160,13 @@ def main() -> int:
             chk.check("PE32 size matches the stub",
                       extracted[0]["size"] == exp["pe32_stub_size"],
                       extracted[0]["size"])
+            chk.check("extraction records source FFS and FV offsets",
+                      bool(extracted[0].get("source_ffs_offset"))
+                      and bool(extracted[0].get("source_fv_offset")),
+                      extracted[0])
+            chk.check("extraction includes SHA-256 provenance",
+                      isinstance(extracted[0].get("sha256"), str)
+                      and len(extracted[0]["sha256"]) == 64)
             p = Path(extracted[0]["path"])
             chk.check("extracted file exists with MZ magic",
                       p.is_file() and p.read_bytes()[:2] == b"MZ")
@@ -168,7 +176,7 @@ def main() -> int:
     vss_dir = ARTIFACTS / "vss"
     ev = run_json(FW_SCRIPTS / "extract_vss.py", str(fixture_path), "--out", str(vss_dir))
     carved_path = None
-    if "_error" in ev:
+    if "error" in ev:
         chk.check("extract_vss produced JSON", False, ev)
     else:
         cands = ev.get("candidates", [])
@@ -178,7 +186,7 @@ def main() -> int:
             chk.check("all four variables validated",
                       c.get("variables_validated") == exp["variable_count"],
                       c.get("variables_validated"))
-            chk.check("candidate confidence high", c.get("confidence") == "high",
+            chk.check("candidate confidence medium", c.get("confidence") == "medium",
                       c.get("confidence"))
             chk.check("detected via the FFS body", c.get("reason") == "ffs-body",
                       c.get("reason"))
@@ -191,7 +199,7 @@ def main() -> int:
     # ------------------------------------------------------------------ #
     chk.section("5. parse_vss: variable decoding (image and carved blob)")
     pv = run_json(FW_SCRIPTS / "vss_parse.py", str(fixture_path))
-    if "_error" in pv:
+    if "error" in pv:
         chk.check("vss_parse produced JSON", False, pv)
         names_image = []
     else:
@@ -216,7 +224,7 @@ def main() -> int:
 
     if carved_path and carved_path.is_file():
         pvc = run_json(FW_SCRIPTS / "vss_parse.py", str(carved_path))
-        if "_error" in pvc:
+        if "error" in pvc:
             chk.check("vss_parse on the carved blob", False, pvc)
         else:
             names_carved = sorted(v["name"] for v in pvc.get("variables", []))
@@ -228,7 +236,7 @@ def main() -> int:
     # ------------------------------------------------------------------ #
     chk.section("6. list_smi: Ring -2 enumeration")
     ls = run_json(FW_SCRIPTS / "list_smi.py", str(fixture_path))
-    if "_error" in ls:
+    if "error" in ls:
         chk.check("list_smi produced JSON", False, ls)
     else:
         chk.check("firmware-image mode", ls.get("mode") == "firmware-image",
@@ -246,8 +254,10 @@ def main() -> int:
 
     # ------------------------------------------------------------------ #
     chk.section("7. uefi_walk: fallback scanner agrees on the type table")
-    uw = run_json(FW_SCRIPTS / "uefi_walk.py", str(fixture_path))
-    if "_error" in uw:
+    uw_extract = ARTIFACTS / "uefi-walk-extracted"
+    uw = run_json(FW_SCRIPTS / "uefi_walk.py", str(fixture_path),
+                  "--extract", str(uw_extract))
+    if "error" in uw:
         chk.check("uefi_walk produced JSON", False, uw)
     else:
         chk.check("FFS total is three", uw.get("ffs_total") == exp["file_total"],
@@ -255,6 +265,9 @@ def main() -> int:
         blob = json.dumps(uw)
         for expected_type in ("DRIVER", "MM_STANDALONE", "RAW"):
             chk.check(f"uefi_walk reports {expected_type}", expected_type in blob)
+        extracted_files = list(uw_extract.rglob("*")) if uw_extract.exists() else []
+        chk.check("uefi_walk --extract writes PE32/TE payloads",
+                  any(p.is_file() for p in extracted_files), extracted_files)
 
     # ------------------------------------------------------------------ #
     chk.section("8. triage tools on a real binary")
@@ -279,33 +292,41 @@ def main() -> int:
         chk.check("pack_detect emits a verdict", bool(pd.get("verdict")),
                   pd.get("verdict"))
         chk.check("pack_detect emits a confidence note", bool(pd.get("confidence")))
+        chk.check("pack_detect lists evidence and limitations",
+                  "evidence" in pd and bool(pd.get("limitations")))
 
     # ------------------------------------------------------------------ #
     chk.section("9. yara_scan: rule compilation and overlap dedup")
-    ys = run_json(RE_SCRIPTS / "yara_scan.py", str(fixture_path))
-    chk.check("yara_scan compiles the built-in ruleset", "error" not in ys,
-              ys.get("error"))
-    chk.check("yara_scan reports an integer match_total",
-              isinstance(ys.get("match_total"), int), ys.get("match_total"))
+    if importlib.util.find_spec("yara") is None:
+        chk.skip("YARA rule compilation and overlap checks", "yara-python not installed")
+    else:
+        ys = run_json(RE_SCRIPTS / "yara_scan.py", str(fixture_path))
+        chk.check("yara_scan compiles the built-in ruleset", "error" not in ys,
+                  ys.get("error"))
+        chk.check("yara_scan reports an integer match_total",
+                  isinstance(ys.get("match_total"), int), ys.get("match_total"))
 
-    # A file engineered to hit several rules at overlapping offsets.
-    control = ARTIFACTS / "yara-control.bin"
-    control.write_bytes(
-        b"UPX0 http://evil.example.com/payload.bin 192.168.10.44 "
-        b"admin@evil.example.com ASPack"
-    )
-    ysc = run_json(RE_SCRIPTS / "yara_scan.py", str(control))
-    hits = ysc.get("matches", [])
-    ip_hits = [h for h in hits if h["rule"] == "qi_nx_ioc_ipv4"]
-    mail_hits = [h for h in hits if h["rule"] == "qi_nx_ioc_email"]
-    chk.check("overlapping IPv4 matches deduplicated to one",
-              len(ip_hits) == 1, len(ip_hits))
-    chk.check("overlapping email matches deduplicated to one",
-              len(mail_hits) == 1, len(mail_hits))
-    chk.check("packer rules hit on the control",
-              any(h["rule"] == "qi_nx_packer_upx" for h in hits)
-              and any(h["rule"] == "qi_nx_packer_aspack" for h in hits),
-              [h["rule"] for h in hits])
+        # A file engineered to hit several rules at overlapping offsets.
+        control = ARTIFACTS / "yara-control.bin"
+        control.write_bytes(
+            b"UPX0 http://evil.example.com/payload.bin 192.168.10.44 999.999.999.999 "
+            b"admin@evil.example.com ASPack"
+        )
+        ysc = run_json(RE_SCRIPTS / "yara_scan.py", str(control))
+        hits = ysc.get("matches", [])
+        ip_hits = [h for h in hits if h["rule"] == "qi_nx_ioc_ipv4"]
+        mail_hits = [h for h in hits if h["rule"] == "qi_nx_ioc_email"]
+        chk.check("overlapping IPv4 matches deduplicated to one",
+                  len(ip_hits) == 1, len(ip_hits))
+        chk.check("invalid IPv4 octets do not match the built-in IOC rule",
+                  "999.999.999.999" not in [h["preview_text"] for h in ip_hits],
+                  [h["preview_text"] for h in ip_hits])
+        chk.check("overlapping email matches deduplicated to one",
+                  len(mail_hits) == 1, len(mail_hits))
+        chk.check("packer rules hit on the control",
+                  any(h["rule"] == "qi_nx_packer_upx" for h in hits)
+                  and any(h["rule"] == "qi_nx_packer_aspack" for h in hits),
+                  [h["rule"] for h in hits])
 
     # ------------------------------------------------------------------ #
     chk.section("10. chipsec_abstract: log normalisation")
@@ -327,6 +348,18 @@ def main() -> int:
 
     # ------------------------------------------------------------------ #
     chk.section("11. MCP server protocol conformance")
+    edge_case_test = Path(__file__).resolve().parent / "test_edge_cases.py"
+    edge_proc = subprocess.run(
+        [sys.executable, str(edge_case_test)],
+        capture_output=True, text=True, encoding="utf-8", errors="replace",
+        timeout=120,
+    )
+    chk.check("nested FV and variable-state edge cases passed",
+              edge_proc.returncode == 0,
+              (edge_proc.stdout + edge_proc.stderr)[-800:])
+
+    # ------------------------------------------------------------------ #
+    chk.section("12. MCP server protocol conformance")
     mcp_test = Path(__file__).resolve().parent / "test_mcp_protocol.py"
     proc = subprocess.run(
         [sys.executable, str(mcp_test), str(fixture_path)],

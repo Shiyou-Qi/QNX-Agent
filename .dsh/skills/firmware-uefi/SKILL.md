@@ -54,6 +54,9 @@ Two deliberate design choices worth knowing:
 - `walk_fv` reports compressed (`EFI_SECTION_COMPRESSION`) and GUID-defined
   sections but does not decompress them. Use `uefi_firmware_parse` or
   UEFIExtract, then re-run `walk_fv` / `lief_info` on the results.
+- `parse_vss` reports the raw variable state and marks the selected current
+  copy. Prefer `current: true` for platform-state conclusions; deleted and
+  header-only records are historical evidence, not live configuration.
 
 All scripts and the MCP server print `by Qi-NX-Agent (Copyright Qi-NX)`.
 
@@ -73,6 +76,25 @@ All scripts and the MCP server print `by Qi-NX-Agent (Copyright Qi-NX)`.
    - Android boot/recovery: `ANDROID!` magic, kernel + ramdisk + second stage.
 2. Carve regions with the Flash Descriptor map. Use `ifdtool -d` and `ifdtool -x bios.bin`.
 3. Pull NVRAM / VSS regions and snapshot them; many rootkits persist only in variables.
+
+## 1.1 Choose the next step from observed results
+
+- No FV found: check the scan offsets for a capsule, descriptor region, or
+  container boundary. Carve the likely BIOS region and scan it again; do not
+  conclude that the image has no firmware volumes.
+- Compression/GUID-defined sections found: use the available decompressor or
+  UEFIExtract, record the extracted file's hash and source offset, then re-run
+  the structural walk on the output.
+- NVRAM candidate found: inspect variable `state_name` and `current`. Base
+  current platform-state claims on selected current copies; retain deleted
+  copies only as history or tampering leads.
+- MM/SMM FFS type or marker found: extract the module and follow its entry point,
+  dispatch registration, input structure, and validation paths in a disassembler.
+  The file type and strings alone do not establish a vulnerability.
+- Optional tool unavailable: use the documented fallback and state which
+  coverage was lost. Never translate a missing scan into a negative finding.
+- Stop after answering the concrete question; expand to Chipsec, capsule, or
+  cross-stage analysis only when the image or findings justify it.
 
 ## 2. UEFI volume walk
 
@@ -136,6 +158,8 @@ Produce:
 - Board / vend / BIOS version, ME/PSP/EC firmware versions, image SHA-256.
 - Stage-by-stage map with FV/FFS GUIDs, module sizes, entry-point RVAs.
 - NVRAM sensitive-variable map with attribute bytes (NV+BS+RT+AT etc.).
+- For each variable, include raw state, selected-current status, vendor GUID,
+  and whether the conclusion relies on a historical copy.
 - SMM SwSmi handler table with vulnerability rating.
 - Boot-trust anchor diagram and findings (Boot Guard state, KG chaotic update flow).
 - IOCs: ME/PSP version, OEM public key hashes, anomalous DXE drivers (no EDK2 strings, high entropy sections).

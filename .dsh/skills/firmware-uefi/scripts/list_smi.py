@@ -30,6 +30,7 @@ handler input values. Use the reported module list with IDA/Ghidra and
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import sys
 from pathlib import Path
@@ -195,6 +196,10 @@ def list_smm(image_path: str | Path, guids_path: str | Path | None = None,
         "mode": None,
         "modules": [],
         "notes": [],
+        "limitations": [
+            "FFS type and embedded strings are triage evidence, not proof of a vulnerable handler",
+            "SwSmi inputs, call graphs, and pointer-validation behavior are not recovered",
+        ],
     }
     if guid_table is not None:
         result["guid_table_entries"] = len(guid_table)
@@ -227,12 +232,20 @@ def list_smm(image_path: str | Path, guids_path: str | Path | None = None,
                     "ffs_type": ffs["type"],
                     "ffs_type_name": ffs["type_name"],
                     "is_smm_ffs_type": is_smm_type,
+                    "evidence_basis": {
+                        "ffs_type_classification": is_smm_type,
+                        "dispatch_marker_names": analysed["marker_names"],
+                    },
+                    "confidence": ("medium: FFS type identifies an MM/SMM-class file; "
+                                   "handler behavior is not established" if is_smm_type
+                                   else "low: marker strings are leads, not proof of SMM execution"),
                     "file_offset": hex(ffs["offset"]),
                 })
                 if out_root and is_smm_type:
-                    dest = out_root / f"{ffs['guid']}.bin"
+                    dest = out_root / f"{ffs['guid']}_ffs_{ffs['offset']:#x}.bin"
                     dest.write_bytes(body)
                     analysed["extracted_path"] = str(dest)
+                    analysed["sha256"] = hashlib.sha256(body).hexdigest()
                 result["modules"].append(analysed)
 
     if not found_ffs:

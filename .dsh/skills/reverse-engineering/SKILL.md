@@ -48,9 +48,13 @@ All scripts and the MCP server print `by Qi-NX-Agent (Copyright Qi-NX)`.
    - `file <bin>`, `xxd -l 64 <bin>`, `binwalk -E <bin>`, `diec <bin>` / `DetectItEasy`, `peid`, `osslsigncode verify`.
    - On Linux: `readelf -h`, `objdump -f`, `ldd`, `strings -a -n 6 -t x`.
    - On Windows PE: `pestudio`, `pe-sieve`, `dumpbin /headers /imports`.
-2. Detect packing / encryption:
-   - High entropy sections + tiny import table ⇒ packed (UPX, Themida, VMProtect, custom).
-   - Check known packer IDs via DIE or `peid`.
+2. Treat packing / encryption detection as a hypothesis:
+   - High entropy + a small import table is a lead, not proof; compressed assets,
+     encrypted resources, and stripped binaries can look the same.
+   - Corroborate with section names, entry-point location, imports, YARA hits,
+     and an independent tool such as DIE. State the evidence and confidence.
+   - `no-known-packer-indicators` means only that these heuristics found nothing;
+     it is not a clean-file verdict.
 3. Extract quick IOCs:
    - URLs, IPs, mutexes, user-agents, file paths, registry keys.
    - `strings -a -n 6 -e l` for UTF-16LE; bulk extractor for bulk features.
@@ -99,6 +103,26 @@ All scripts and the MCP server print `by Qi-NX-Agent (Copyright Qi-NX)`.
 ## 7. Reporting
 
 - Produce: executive summary, artifact manifest (md5/sha1/sha256, size, type), IOC table, MITRE ATT&CK mapping, capability breakdown, recommended detections (yara, sigma, suricata), and a confidence rating per claim.
+- For every claim, separate direct observations from interpretation. Include the
+  relevant file offset/RVA, tool and output field, alternative explanations, and
+  what additional evidence would raise confidence. Never infer intent from a
+  string or a single YARA hit alone.
+
+## 7.1 Adaptive workflow
+
+- Start with `tool_status` and identify the container before selecting tools.
+- PE/ELF/Mach-O: inspect metadata and imports; use YARA/strings for leads; choose
+  disassembly only after a concrete function, capability, or protocol question is
+  established.
+- If packer signals agree, record each signal and confidence, then look for a
+  safe unpacking route. If they disagree, keep the result as an unresolved lead.
+- Script/archive/container: identify the format and extract a bounded layer at a
+  time; re-hash each extracted artifact and repeat triage on it.
+- Network capture/protocol: map framing and directions first, then test field
+  hypotheses against multiple messages before writing a parser or claiming a
+  protocol behavior.
+- Stop when the requested question is answered with reproducible evidence; do
+  not run every tool just because it is available.
 
 ## 8. Subagent fan-out pattern
 

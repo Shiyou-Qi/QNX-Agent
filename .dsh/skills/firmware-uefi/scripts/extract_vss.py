@@ -39,6 +39,18 @@ DEFAULT_CARVE_SIZE = 0x40000    # 256 KiB covers typical NVRAM stores
 MAX_VARIABLE_HEADER = 1024      # sanity bound for a single variable name/size
 MIN_VARIABLES = 2               # a real store holds several variables
 
+# EDK II variable state values. 0x3e is the bit-cleared form of
+# VAR_IN_DELETED_TRANSITION & VAR_ADDED and may still be the current copy when
+# no fully-added replacement exists.
+VARIABLE_STATE_NAMES = {
+    0x3F: "added",
+    0x3E: "in-deleted-transition",
+    0x7F: "header-valid-only",
+    0xFD: "deleted",
+    0xFE: "deleted-transition",
+}
+CURRENT_VARIABLE_STATES = {0x3F, 0x3E}
+
 # The EDK2 variable store header sits *before* the first variable header:
 #   signature GUID(16) + Size(4) + Format(1) + State(1) + Reserved(2) + Reserved1(4)
 # = 28 bytes, padded to 32 in FFS storage. Real images vary, so probe the
@@ -123,6 +135,7 @@ def iter_variables(data: bytes, start: int, limit: int):
             "data_offset": data_off,
             "data": data[data_off:data_off + data_size],
             "state": state,
+            "state_name": VARIABLE_STATE_NAMES.get(state, f"unknown(0x{state:02x})"),
             "sensitive": name in SENSITIVE_NAMES or name.startswith(
                 ("Boot", "Driver", "Key", "Signature")),
         }
@@ -180,7 +193,8 @@ def _candidate_from_ffs(data: bytes, ffs: dict, size_cap: int) -> dict | None:
         "reason": "ffs-body",
         "offset": body_start,
         "size": min(body_end - body_start, size_cap),
-        "confidence": "high" if count >= 3 else "low",
+        "confidence": "medium" if count >= 3 else "low",
+        "confidence_basis": f"FFS body plus {count} structurally valid variable headers; heuristic only",
         "variables_validated": count,
         "variable_headers_at": var_at,
         "source_ffs_guid": ffs["guid"],
@@ -220,7 +234,8 @@ def extract(image_path: str | Path, out_dir: str | Path,
             "reason": f"marker:{marker.decode('ascii', 'replace')}",
             "offset": off,
             "size": min(size_cap, len(data) - off),
-            "confidence": "high" if count >= 3 else "low",
+            "confidence": "medium" if count >= 3 else "low",
+            "confidence_basis": f"{marker.decode('ascii', 'replace')} marker plus {count} structurally valid headers; heuristic only",
             "variables_validated": count,
             "variable_headers_at": var_at,
         })
@@ -242,13 +257,14 @@ def extract(image_path: str | Path, out_dir: str | Path,
                     "reason": "var-headers",
                     "offset": i,
                     "size": min(size_cap, len(data) - i),
-                    "confidence": "medium" if count >= 3 else "low",
+                    "confidence": "low",
+                    "confidence_basis": f"raw 0x55AA header run with {count} plausible records; weakest detection path",
                     "variables_validated": count,
                 })
                 found_offsets.add(i)
 
     # Deduplicate by offset, keeping the highest-confidence/most-specific record.
-    rank = {"high": 3, "medium": 2, "low": 1}
+    rank = {"medium": 2, "low": 1}
     by_offset: dict[int, dict] = {}
     for c in candidates:
         prev = by_offset.get(c["offset"])

@@ -17,14 +17,14 @@ All tools are published under the `uefi` server name, so the model sees
 | `tool_status` | — | which Python modules and external binaries actually exist here, plus the resolved script directories |
 | `walk_fv` | `image`, `extract_dir?`, `max_files?` | firmware volumes, FFS files, sections; with `extract_dir`, writes every PE32/TE payload |
 | `extract_vss` | `image`, `out_dir`, `raw_scan?`, `size_cap?` | candidate NVRAM stores, each validated and carved to a file |
-| `parse_vss` | `image`, `variable?` | decoded variables with attributes and sensitive flags |
+| `parse_vss` | `image`, `variable?` | decoded variables with attributes, raw EDK II state, selected-current flag, and sensitive flags |
 | `list_smi` | `image`, `guids?`, `include_dxe?`, `extract_dir?` | SMM/MM modules with EDK2 dispatch and communication markers |
 | `uefi_firmware_parse` | `image`, `max_objects?` | decompression-aware parse via the `uefi-firmware` library |
 | `binwalk_scan` | `image` | magic/compression offsets — binwalk when installed, otherwise the built-in scanner |
 | `uefitool_extract` | `image`, `out_dir` | shells out to UEFIExtract; a clear error when it is absent |
 | `lief_info` | `target`, `sections?`, `imports?`, `exports?`, `relocs?` | PE/ELF/Mach-O triage |
 | `yara_scan` | `target`, `rules?`, `max_matches?` | built-in triage ruleset or your own rules |
-| `pack_detect` | `target` | packer/protector verdict with a confidence note |
+| `pack_detect` | `target` | heuristic packer/protector verdict with evidence and limitations |
 
 Broken or missing prerequisites never produce a fake success: tools return
 `{"error": "..."}` plus a `hint` or `fallback` field naming the working

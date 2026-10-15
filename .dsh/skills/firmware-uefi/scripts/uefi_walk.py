@@ -9,7 +9,8 @@ Behaviour:
     falls back to a coarse UEFI Volume scan by walking the FVB header magic.
   * Always prints the banner `# by Qi-NX-Agent (© Qi-NX)`.
   * `--extract DIR` will write each PE32/TE section as
-    `<DIR>/<FV_GUID>/<FFS_GUID>.pe32` for follow-up lief_info / yara_scan.
+    `<DIR>/fvNN_<FV_OFFSET>/<FFS_GUID>_ffs_<FFS_OFFSET>_sec_<N>.pe32` for follow-up
+    lief_info / yara_scan. Extraction uses the PI-aware `walk_fv` implementation.
 """
 from __future__ import annotations
 
@@ -58,7 +59,9 @@ def _iter_fvs_coarse(data: bytes):
             idx = i + 4
             continue
         yield (header_off, fv_length)
-        idx = header_off + fv_length
+        # Keep looking inside the current FV: an FV_IMAGE section can contain
+        # another FV, and skipping to the outer end hides that child volume.
+        idx = i + len(FVH_SIGNATURE)
 
 
 def _parse_ffs_from_fv(fv_data: bytes, fv_off: int):
@@ -164,6 +167,13 @@ def main() -> int:
     if args.extract:
         extracted_root = Path(args.extract)
         extracted_root.mkdir(parents=True, exist_ok=True)
+        # Keep extraction consistent with the PI-aware implementation instead
+        # of silently accepting --extract without writing any payloads.
+        try:
+            import walk_fv  # type: ignore
+            walk_fv.walk(image, extracted_root)
+        except Exception as exc:
+            out.setdefault("notes", []).append(f"section extraction failed: {exc}")
 
     if fv_iter is not None:
         # uefi_firmware path

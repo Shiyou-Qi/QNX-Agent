@@ -23,6 +23,7 @@ walker or `lief_info.py` on the extracted PE32/TE files.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import sys
 from pathlib import Path
@@ -142,7 +143,11 @@ def iter_firmware_volumes(data: bytes):
             "revision": data[hdr + 0x37],
             "attributes": _u32(data, hdr + 0x2C),
         }
-        idx = hdr + fv_len
+        # Continue scanning inside this volume. FV_IMAGE sections may contain
+        # nested firmware volumes, so jumping to the outer FV's end silently
+        # skipped valid child volumes. The candidate header is validated above,
+        # which keeps scanning forward by the signature length inexpensive.
+        idx = i + len(FV_SIGNATURE)
 
 
 def iter_ffs_files(data: bytes, fv_off: int, fv_len: int, fv_hdr_len: int):
@@ -255,7 +260,7 @@ def walk(image_path: str | Path, extract_dir: str | Path | None = None,
             body_end = ffs["offset"] + ffs["size"]
 
             sections = []
-            for sec in iter_sections(data, body_start, body_end):
+            for section_index, sec in enumerate(iter_sections(data, body_start, body_end)):
                 result["section_total"] += 1
                 sec_entry = dict(sec)
                 sec_entry["offset"] = hex(sec["offset"])
@@ -268,13 +273,19 @@ def walk(image_path: str | Path, extract_dir: str | Path | None = None,
                                    sec["payload_offset"] + sec["payload_size"]]
                     dest_dir = out_root / f"fv{fv_index:02d}_{fv['offset']:#x}"
                     dest_dir.mkdir(parents=True, exist_ok=True)
-                    dest = dest_dir / f"{ffs['guid']}.{ext}"
+                    dest = dest_dir / (
+                        f"{ffs['guid']}_ffs_{ffs['offset']:#x}_sec_{section_index:03d}.{ext}")
                     dest.write_bytes(payload)
                     result["extracted"].append({
                         "path": str(dest),
                         "section_type": sec["type_name"],
+                        "section_index": section_index,
+                        "source_ffs_guid": ffs["guid"],
+                        "source_ffs_offset": hex(ffs["offset"]),
+                        "source_fv_offset": hex(fv["offset"]),
                         "source_offset": hex(sec["payload_offset"]),
                         "size": len(payload),
+                        "sha256": hashlib.sha256(payload).hexdigest(),
                     })
 
             fv_entry["files"].append({

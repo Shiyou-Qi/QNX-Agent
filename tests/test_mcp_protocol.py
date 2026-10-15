@@ -157,6 +157,9 @@ def main() -> int:
         check("parse_vss flags SecureBoot as sensitive",
               any(v["name"] == "SecureBoot" and v["sensitive"]
                   for v in pv.get("variables", [])))
+        check("parse_vss exposes raw state and current-copy selection",
+              any(v["name"] == "SecureBoot" and v.get("state_name") == "added"
+                  and v.get("current") is True for v in pv.get("variables", [])))
 
         # --- binwalk_scan (documents its fallback) -------------------------
         bw = call_tool("binwalk_scan", {"image": str(fixture)}, 6)

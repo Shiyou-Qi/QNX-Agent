@@ -99,24 +99,35 @@ def detect(target: str | Path) -> dict:
         pass
 
     packer_hits: list[str] = []
+    evidence: list[dict] = []
     for s in sections:
         for name, rx in PACKER_SECTION_HINTS:
             if rx.match(s["name"]):
-                packer_hits.append(f"{name} (section {s['name']})")
+                hit = f"{name} (section {s['name']})"
+                packer_hits.append(hit)
+                evidence.append({"kind": "section-name", "signal": hit,
+                                 "section": s["name"]})
 
     import_hits: list[str] = []
     for name, rx in PROTECTOR_IMPORT_HINTS.items():
         if any(rx.search(n) for n in imported_names):
             import_hits.append(name)
+            matched_imports = [n for n in imported_names if rx.search(n)]
+            evidence.append({"kind": "import-name", "signal": name,
+                             "matches": matched_imports[:16]})
 
     high_entropy_count = sum(1 for s in sections if s["entropy"] >= ENTROPY_HIGH)
     very_high_entropy_count = sum(
         1 for s in sections if s["entropy"] >= ENTROPY_VERY_HIGH)
+    for s in sections:
+        if s["entropy"] >= ENTROPY_HIGH:
+            evidence.append({"kind": "high-entropy-section", "section": s["name"],
+                             "entropy": s["entropy"], "threshold": ENTROPY_HIGH})
 
     # Verdict heuristics, each with the reasoning recorded in `confidence`.
     if packer_hits or import_hits:
         verdict = "packed-known"
-        confidence = "high (section-name and/or import markers)"
+        confidence = "medium (heuristic section-name and/or import markers; independently corroborate)"
     elif very_high_entropy_count >= max(1, len(sections) // 2):
         verdict = "packed-unknown"
         confidence = "medium (most sections entropy >= 7.5)"
@@ -124,9 +135,8 @@ def detect(target: str | Path) -> dict:
         verdict = "packed-unknown"
         confidence = "low (one high-entropy section + tiny import table)"
     else:
-        verdict = "likely-clean"
-        confidence = ("low signal (no packer markers, entropy normal, "
-                      "import table reasonable)")
+        verdict = "no-known-packer-indicators"
+        confidence = "low (absence of these indicators does not establish that the file is unpacked)"
 
     out = {
         "tool": "qi-nx-pack-detect",
@@ -139,8 +149,14 @@ def detect(target: str | Path) -> dict:
         "imports_count": len(imported_names),
         "packer_hits": packer_hits,
         "protector_import_hits": import_hits,
+        "evidence": evidence,
         "verdict": verdict,
         "confidence": confidence,
+        "limitations": [
+            "heuristic triage only; section names and imports can be forged or removed",
+            "high entropy can result from legitimate compressed or encrypted resources",
+            "no-known-packer-indicators is not a clean-file verdict",
+        ],
     }
     if sections_error:
         out["sections_error"] = sections_error

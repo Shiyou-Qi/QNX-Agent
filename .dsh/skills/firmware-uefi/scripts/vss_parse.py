@@ -104,8 +104,22 @@ def parse(image_path: str | Path, variable: str | None = None,
 
     for cand in candidates:
         limit = min(size_cap, len(data) - cand["variables_at"])
+        parsed = list(extract_vss.iter_variables(data, cand["variables_at"], limit))
+        # UEFI variable stores can retain deleted copies. Prefer a fully-added
+        # copy; a transition copy is current only if no added copy of the same
+        # (name, vendor GUID) exists in this store.
+        selected_indices = set()
+        selected_keys = set()
+        for state in (0x3F, 0x3E):
+            for index in range(len(parsed) - 1, -1, -1):
+                var = parsed[index]
+                key = (var["guid"], var["name"])
+                if var["state"] == state and key not in selected_keys:
+                    selected_indices.add(index)
+                    selected_keys.add(key)
+
         variables = []
-        for var in extract_vss.iter_variables(data, cand["variables_at"], limit):
+        for index, var in enumerate(parsed):
             if variable and var["name"] != variable:
                 continue
             variables.append({
@@ -113,6 +127,9 @@ def parse(image_path: str | Path, variable: str | None = None,
                 "guid": var["guid"],
                 "attributes": hex(var["attributes"]),
                 "attributes_names": var["attributes_names"],
+                "state": hex(var["state"]),
+                "state_name": var["state_name"],
+                "current": index in selected_indices,
                 "size": var["data_size"],
                 "header_offset": hex(var["header_offset"]),
                 "data_offset": hex(var["data_offset"]),
@@ -127,6 +144,11 @@ def parse(image_path: str | Path, variable: str | None = None,
             "variables_emitted": len(variables),
         })
         result["variables"].extend(variables)
+
+    if any(not var["current"] for var in result["variables"]):
+        result["notes"].append(
+            "historical or incomplete variable records are included; use current=true "
+            "for the selected live copy and retain other states as forensic evidence")
 
     return result
 
@@ -163,9 +185,11 @@ def main() -> int:
         print("\nvariables:")
     for v in info["variables"]:
         sens = " [SENSITIVE]" if v["sensitive"] else ""
+        current = " [CURRENT]" if v["current"] else " [HISTORICAL/INCOMPLETE]"
         attrs = "+".join(v["attributes_names"]) or "none"
         print(f"  {v['name']:<32} {v['guid']} attrs={v['attributes']:<10} "
-              f"({attrs}) size=0x{v['size']:x}{sens}")
+              f"({attrs}) state={v['state_name']} size=0x{v['size']:x}"
+              f"{current}{sens}")
         if not args.list:
             print(f"      data[:32]={v['data_preview_hex']}")
     for note in info["notes"]:

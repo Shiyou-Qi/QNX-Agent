@@ -172,12 +172,14 @@ GUIDs, attributes and marker sets, checks the extract→parse chain equals
 parse-in-place, exercises the LIEF/YARA tools against a real binary, and runs MCP
 protocol conformance over stdio.
 
-Last run: **72 checks passed, 0 failed.**
+The suite has been extended with nested-FV and variable-state cases. Re-run it
+after local changes to confirm the current checkout.
 
 `tests/` contents:
 
 - [`fixtures.py`](tests/fixtures.py) — the fixture generator and its expectations
 - [`test_mcp_protocol.py`](tests/test_mcp_protocol.py) — raw JSON-RPC conformance test
+- [`test_edge_cases.py`](tests/test_edge_cases.py) — nested FV and variable-state cases
 - [`verify_all.py`](tests/verify_all.py) — the orchestrator
 - `tests/artifacts/` — regenerated on every run
 
@@ -205,6 +207,11 @@ version than DSH uses.
 - **`list_smi` is a triage enumerator, not a disassembler.** It does not recover
   SwSmi handler input values. Use its module list with IDA/Ghidra and
   `gEfiSmmSwDispatch2ProtocolGuid` cross-references for the handler table.
+- **NVRAM records can be historical.** `parse_vss` reports each raw EDK II
+  variable state and marks the selected current copy. Deleted records may still
+  be useful forensic evidence, but should not be treated as live configuration.
+- **Packer verdicts are leads.** `pack_detect` includes the signals that drove
+  its verdict; `no-known-packer-indicators` does not mean the file is clean.
 - **The MCP protocol negotiates down to 2025-11-25.** The Python SDK's latest
   revision is 2026-07-28 but its server side currently answers 2025-11-25; the
   DSH client documents exactly this fallback, and the tools register correctly.

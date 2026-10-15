@@ -53,10 +53,11 @@ def main() -> int:
             continue
         s = SUMMARY_RX.match(line)
         if s:
-            if not modules or modules[-1].get("_summary") is None:
-                modules.append({"module": "__SUMMARY__", "results": [{"status": "INFO", "message": s.group(1)}]})
-            else:
-                modules[-1]["_summary"] = s.group(1)
+            summary = next((m for m in modules if m["module"] == "__SUMMARY__"), None)
+            if summary is None:
+                summary = {"module": "__SUMMARY__", "results": []}
+                modules.append(summary)
+            summary["results"].append({"status": "INFO", "message": s.group(1)})
 
     if args.json:
         print(json.dumps({

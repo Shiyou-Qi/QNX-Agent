@@ -83,10 +83,10 @@ def _ffs(guid: bytes, ftype: int, body: bytes) -> bytes:
     return out + b"\x00" * ((8 - (len(out) % 8)) % 8)
 
 
-def _variable(name: str, data: bytes, attrs: int) -> bytes:
+def _variable(name: str, data: bytes, attrs: int, state: int = 0x3F) -> bytes:
     """One EDK2 variable record: 32-byte header, UTF-16 name, then data."""
     encoded = name.encode("utf-16-le") + b"\x00\x00"
-    out = (struct.pack("<H", 0x55AA) + bytes([0x3F, 0x00])
+    out = (struct.pack("<H", 0x55AA) + bytes([state, 0x00])
            + struct.pack("<I", attrs)
            + struct.pack("<I", len(encoded)) + struct.pack("<I", len(data))
            + VAR_GUID + encoded + data)

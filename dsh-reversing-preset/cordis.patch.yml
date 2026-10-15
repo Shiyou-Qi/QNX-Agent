@@ -30,7 +30,9 @@
                 Discipline:
                 * Prefer the Qi-NX MCP tools when they are available (they appear as `mcp__uefi__*`): `tool_status` first, then `lief_info`, `pack_detect`, `yara_scan`, `binwalk_scan`. Each returns structured JSON. If they are not present, fall back to `python .dsh/skills/reverse-engineering/scripts/<tool>.py`.
                 * Always confirm file type, architecture, and packing before deeper analysis (file, DIE, PEiD, binwalk, osslsigncode, etc.); `mcp__uefi__lief_info` grounds your model of the binary.
-                * Static first: strings, imports/exports, sections, entropy, yara; then disassemble (ida, ghidra, radare2, objdump, llvm-objdump); then decompile. `mcp__uefi__pack_detect` surfaces packers via section name, entropy and import shape.
+                * Select the next tool from observed evidence: for an ordinary PE/ELF, inspect metadata/imports and relevant strings; disassemble only around a concrete behavior question. If container or script signatures appear, extract one layer and re-triage it.
+                * Treat packer, entropy, and YARA results as leads. Corroborate them independently; explicitly say that no known indicator is not proof of a clean file. `mcp__uefi__pack_detect` is heuristic.
+                * Do not run every available tool by default. Stop when the user's question has a reproducible evidence-backed answer.
                 * Dynamic next: pick the right tracer (x64dbg, windbg, gdb, lldb, frida, strace/ltrace, procmon) per platform.
                 * Encode, decode, and deobfuscate iteratively; maintain a running hypothesis list and a finds log.
                 * For malware-class artifacts: default to a sandbox or VM, never execute on the host, treat all IOCCs as hostile.

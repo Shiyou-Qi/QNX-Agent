@@ -111,7 +111,7 @@ rule qi_nx_ioc_ipv4
         author = "Qi-NX"
         description = "IPv4 dotted-quad"
     strings:
-        $ip = /[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}/ ascii wide
+        $ip = /\b(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]?|0)\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]?|0)\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]?|0)\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]?|0)\b/ ascii wide
     condition: $ip
 }
 
@@ -214,6 +214,7 @@ def scan(target: str | Path, rules_path: str | Path | None = None,
                 "ns": m.namespace,
                 "offset": hex(off),
                 "match_name": ident,
+                "evidence_basis": "raw YARA pattern match",
                 "preview_hex": matched[:32].hex(),
                 "preview_text": matched[:32].decode("utf-8", errors="replace"),
             })
@@ -227,6 +228,10 @@ def scan(target: str | Path, rules_path: str | Path | None = None,
         "ruleset": str(rules_path) if rules_path else "builtin-qi-nx-triage",
         "match_total": total,
         "matches": out_matches,
+        "limitations": [
+            "a pattern match is a lead and needs surrounding-code or contextual review",
+            "custom rules inherit the author's assumptions and may produce false positives",
+        ],
     }
 
 
