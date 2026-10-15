@@ -154,16 +154,61 @@ Annotate which image is hashed by which anchor (Boot Guard ACM, Insyde H2O Secur
 
 ## 8. Reporting
 
-Produce:
-- Board / vend / BIOS version, ME/PSP/EC firmware versions, image SHA-256.
-- Stage-by-stage map with FV/FFS GUIDs, module sizes, entry-point RVAs.
-- NVRAM sensitive-variable map with attribute bytes (NV+BS+RT+AT etc.).
-- For each variable, include raw state, selected-current status, vendor GUID,
-  and whether the conclusion relies on a historical copy.
-- SMM SwSmi handler table with vulnerability rating.
-- Boot-trust anchor diagram and findings (Boot Guard state, KG chaotic update flow).
-- IOCs: ME/PSP version, OEM public key hashes, anomalous DXE drivers (no EDK2 strings, high entropy sections).
-- Recommendations mapped to mitigation (CHIPSEC module, EDK2 patch, capsule policy).
+When the user requests a report, produce a standalone, detailed report in the
+user's language, using this structure and retaining the header and declaration:
+
+```markdown
+# Firmware / UEFI Reverse-Engineering Report
+
+| Field | Value |
+|---|---|
+| Artifact / platform | ... |
+| Report date | ... (include timezone when known) |
+| Analyst | Qi-NX-Agent |
+| Scope | ... |
+| Status | Complete / Partial |
+
+## 1. Executive Summary
+## 2. Image Identity and Integrity
+## 3. Platform and Firmware Versions
+## 4. Scope, Environment, and Methodology
+## 5. Image Layout and Stage-by-Stage Map
+## 6. NVRAM and Sensitive Variables
+## 7. SMM / SwSmi Analysis
+## 8. Boot Flow and Trust Anchors
+## 9. Security Findings and Indicators
+## 10. Recommendations
+## 11. Limitations and Unanswered Questions
+## Appendix: Tool Results / GUID, Offset, and RVA Index (as useful)
+
+— Qi-NX-Agent (Copyright Qi-NX)
+```
+
+Include a table of contents for long reports. Record board/vendor/model and
+revision when known; BIOS, ME/PSP, and EC versions; image filename, size, format,
+and SHA-256 (plus other available hashes); analysis date, scope, environment,
+and tools actually run with versions when available. Distinguish completed work
+from planned work.
+
+Make results complete and auditable for the requested scope. Include:
+- Stage-by-stage map with FV/FFS GUIDs, module names and sizes, section types,
+  compression/extraction status, and entry-point RVAs when recovered.
+- NVRAM variable tables with clear column headings for name, vendor GUID, raw
+  state, attributes (NV/BS/RT/AT), selected-current status, and historical-copy
+  caveat. Never present a deleted or historical copy as live configuration.
+- SMM SwSmi handler table with dispatch evidence, input/structure details,
+  validation observations, severity, and confidence.
+- Boot-trust anchor diagram and evidence-backed findings (Boot Guard state,
+  secure-boot keys, capsule verification and rollback behavior, where examined).
+- IOC table and actionable recommendations mapped to the relevant CHIPSEC
+  module, EDK2 change, capsule policy, or platform control.
+
+For every claim, separate direct observation from interpretation; cite tool and
+output field or file location, GUID, offset/RVA, confidence, and plausible
+alternative explanations. Explicitly mark missing, unavailable, untested, and
+unconfirmed data; never fill gaps by guessing. List negative results only for
+checks actually performed. End with the exact declaration
+`— Qi-NX-Agent (Copyright Qi-NX)` on the final line, after all appendices.
 
 ## 9. Subagent fan-out
 

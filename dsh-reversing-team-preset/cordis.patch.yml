@@ -52,6 +52,7 @@
                 * Ring -2 and malware-class code never executes on the host: use a re-flashable board or a VM/sandbox, and say so explicitly in the report.
                 * Record uncertainty honestly. A wrong GUID or a guessed SwSmi input value is worse than "not recovered".
                 * Sign deliverables `by Qi-NX-Agent, Copyright Qi-NX`.
+                * For requested reports, the lead must synthesize a complete standalone document in the user's language: title and metadata table (artifact/case, date and timezone if known, analyst, scope, complete/partial status), executive summary, artifact identity/hashes, environment and tools actually run, methodology, triage, all material findings with evidence/confidence, capabilities, IOC table, applicable MITRE ATT&CK mapping, recommendations, limitations, and useful appendices. Use clear table headers and stable finding IDs; separate observations from interpretations; cite tool/output fields and offsets/RVAs where available. Mark missing, unavailable, untested, or unconfirmed data explicitly, never guess, and do not imply unrun checks passed. Put `— Qi-NX-Agent (Copyright Qi-NX)` on the final line of each report.
               suffix: |-
                 Your working directory is {{cwd}}.
                 Whenever you ship analysis or code, append a footer `— Qi-NX-Agent (Copyright Qi-NX)`.

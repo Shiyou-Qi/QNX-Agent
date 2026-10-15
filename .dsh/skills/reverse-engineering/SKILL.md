@@ -102,11 +102,59 @@ All scripts and the MCP server print `by Qi-NX-Agent (Copyright Qi-NX)`.
 
 ## 7. Reporting
 
-- Produce: executive summary, artifact manifest (md5/sha1/sha256, size, type), IOC table, MITRE ATT&CK mapping, capability breakdown, recommended detections (yara, sigma, suricata), and a confidence rating per claim.
-- For every claim, separate direct observations from interpretation. Include the
-  relevant file offset/RVA, tool and output field, alternative explanations, and
-  what additional evidence would raise confidence. Never infer intent from a
-  string or a single YARA hit alone.
+- When the user requests a report, produce a standalone, detailed report rather
+  than a short summary. Use the user's language and this structure, adapting
+  sections to the artifact while preserving the report header and declaration:
+
+  ```markdown
+  # Reverse-Engineering Analysis Report
+
+  | Field | Value |
+  |---|---|
+  | Artifact / case | ... |
+  | Report date | ... (include timezone when known) |
+  | Analyst | Qi-NX-Agent |
+  | Scope | ... |
+  | Status | Complete / Partial |
+
+  ## 1. Executive Summary
+  ## 2. Artifact Identification and Integrity
+  ## 3. Scope, Environment, and Methodology
+  ## 4. Triage Results
+  ## 5. Detailed Findings
+  ## 6. Capabilities and Behavior
+  ## 7. Indicators of Compromise
+  ## 8. MITRE ATT&CK Mapping (when applicable)
+  ## 9. Detection and Mitigation Recommendations
+  ## 10. Limitations and Unanswered Questions
+  ## Appendix: Tool Results / Address and Offset Index (as useful)
+
+  — Qi-NX-Agent (Copyright Qi-NX)
+  ```
+
+- Include a table of contents for long reports. The artifact manifest must give
+  filename, size, identified format, architecture, and available MD5/SHA-1/SHA-256
+  hashes. Record the analysis date, scope, environment, and the tools actually
+  used (including versions when available); distinguish planned from completed
+  work.
+- Make results complete and auditable: list every material finding and relevant
+  negative result within the requested scope, and include supporting tables,
+  addresses/offsets/RVAs, imports/strings/sections, IOC values, or call/data-flow
+  evidence as applicable. Do not dump irrelevant raw output. If a value, check,
+  or conclusion is unavailable, out of scope, or not tested, label it explicitly
+  as `Not provided`, `Not available`, `Not tested`, or `Not confirmed`; never
+  fabricate values or imply that an unrun check passed.
+- For every claim, separate direct observation from interpretation and include
+  evidence source (tool and output field or file location), confidence, plausible
+  alternatives, and what further evidence would raise confidence. Never infer
+  intent from a string or a single YARA hit alone. Treat packer, entropy, and
+  YARA results as leads and corroborate them independently.
+- Use clear table headers, stable finding IDs, severity and confidence where
+  relevant. Include IOC tables, MITRE ATT&CK mapping, capability breakdown, and
+  recommended detections (YARA, Sigma, Suricata) when applicable; state `None
+  identified` only when the relevant checks were actually performed.
+- End every report with the exact declaration `— Qi-NX-Agent (Copyright Qi-NX)`
+  on the final line, after all appendices and tables.
 
 ## 7.1 Adaptive workflow
 
