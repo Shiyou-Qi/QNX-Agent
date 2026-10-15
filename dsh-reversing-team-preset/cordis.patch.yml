@@ -24,11 +24,7 @@
         id: reversing-team
         name: Qi-NX-Agent (Team Lead)
         description: >-
-          Qi-NX-Agent Team Lead — merged binary and firmware/UEFI
-          reverse-engineering preset that delegates to specialists. Copyright
-          Qi-NX. Carries both the `reverse-engineering` and `firmware-uefi`
-          skills plus the mcp__uefi__* firmware toolkit, and coordinates
-          subagents or Agent Teams threads.
+          整合二进制与固件/UEFI 逆向能力的团队协调助手。可按任务拆分工作并协调专家代理，包含逆向分析与固件分析技能、UEFI 工具集及多代理协作能力。Qi-NX 版权所有。
         order: 7
         plugins:
           - id: persona

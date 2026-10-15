@@ -13,10 +13,7 @@
         id: uefi
         name: Qi-NX-Agent (Firmware / UEFI)
         description: >-
-          Qi-NX-Agent — SPI-flash, UEFI capsule, EC and embedded-soC reversing
-          specialist. Copyright Qi-NX. Ships the firmware extraction workflow
-          (binwalk → UEFITool → chipsec), a UEFI/EDK2-aware persona, and the
-          `firmware-uefi` skill (yara + lief + uefi_walk + vss_parse scripts).
+          面向 SPI Flash、UEFI Capsule、EC 与嵌入式 SoC 的固件逆向分析助手。提供固件提取流程（Binwalk → UEFITool → CHIPSEC）、UEFI/EDK2 专用分析指引及技能脚本（YARA、LIEF、UEFI Walk、VSS 解析）。Qi-NX 版权所有。
         order: 6
         plugins:
           # Persona: UEFI/firmware reverse-engineering discipline.

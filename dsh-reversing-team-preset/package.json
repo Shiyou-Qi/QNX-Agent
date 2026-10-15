@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Qi-NX-Agent (Team Lead) — merged binary + firmware/UEFI reverse-engineering preset driven for multi-agent collaboration. Copyright Qi-NX.",
+  "description": "Qi-NX-Agent（团队协调）：整合二进制与固件 / UEFI 逆向分析能力，支持多代理协作的 DSH Agent 预设。Qi-NX 版权所有。",
   "author": "Qi-NX",
   "license": "UNLICENSED",
   "dsh": { "bundle": { "patch": "./cordis.patch.yml" } }

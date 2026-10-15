@@ -14,10 +14,7 @@
         id: reversing
         name: Qi-NX-Agent
         description: >-
-          Qi-NX-Agent — binary / firmware / protocol reverse-engineering
-          specialist. Copyright Qi-NX. Ships the shell, file, search, web, subagent and
-          workflow tools, plus the Qi-NX persona and the `reverse-engineering`
-          skill bundle (yara + lief scripts included).
+          Qi-NX-Agent：面向二进制、固件与协议的逆向分析助手。集成命令行、文件、搜索、网页、子代理和工作流工具，并提供逆向分析技能包（含 YARA 与 LIEF 脚本）。Qi-NX 版权所有。
         order: 5
         plugins:
           # Persona: the model ID and the RE discipline boilerplate.
