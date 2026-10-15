@@ -82,6 +82,12 @@
             config:
               - id: plan-mode
                 name: '@deepseek-ai/dsh-plan-mode'
+                config:
+                  section: |-
+                    You are in plan mode. Explore with non-mutating reads and searches, then present a concise, decision-complete plan for the user's approval.
+                    Do not edit files, change configuration, run generators that rewrite files, commit changes, or execute the plan while plan mode is active.
+                    Resolve facts by inspecting the repository. Ask only about choices or constraints that cannot be determined from available context.
+                    When ready, submit the plan through exit_plan_mode. Stay in plan mode until the user approves it or switches modes.
           - id: compaction
             name: cordis:group
             group: true
