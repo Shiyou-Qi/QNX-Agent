@@ -18,6 +18,7 @@ Design notes
 
 Banner: by Qi-NX-Agent (Copyright Qi-NX)
 """
+import hashlib
 import json
 import os
 import shutil
@@ -92,6 +93,7 @@ import walk_fv            # noqa: E402
 import extract_vss        # noqa: E402
 import vss_parse          # noqa: E402
 import list_smi           # noqa: E402
+import firmware_diff      # noqa: E402
 
 try:
     import lief_info      # noqa: E402
@@ -110,6 +112,24 @@ try:
 except Exception as exc:  # noqa: BLE001
     pack_detect = None
     print(f"qinx-uefi-mcp: pack_detect unavailable: {exc}", file=sys.stderr)
+
+try:
+    import ghidra_evidence  # noqa: E402
+except Exception as exc:  # noqa: BLE001
+    ghidra_evidence = None
+    print(f"qinx-uefi-mcp: ghidra_evidence unavailable: {exc}", file=sys.stderr)
+
+try:
+    import yara_backtest  # noqa: E402
+except Exception as exc:  # noqa: BLE001
+    yara_backtest = None
+    print(f"qinx-uefi-mcp: yara_backtest unavailable: {exc}", file=sys.stderr)
+
+try:
+    import dynamic_evidence  # noqa: E402
+except Exception as exc:  # noqa: BLE001
+    dynamic_evidence = None
+    print(f"qinx-uefi-mcp: dynamic_evidence unavailable: {exc}", file=sys.stderr)
 
 
 # --------------------------------------------------------------------------- #
@@ -243,7 +263,11 @@ server = MCPServer(
         "binwalk_scan; use walk_fv when firmware-volume signatures or a BIOS "
         "region are present; use extract_vss/parse_vss when NVRAM is relevant; "
         "use list_smi for MM/SMM leads. If compressed sections appear, decompress "
-        "with an available parser and re-walk the extracted output. Prefer walk_fv "
+        "with an available parser and re-walk the extracted output. Use "
+        "ghidra_evidence only for a concrete code-path question, yara_backtest "
+        "before recommending custom rules, firmware_diff for version comparisons, "
+        "and dynamic_evidence only to normalize telemetry exported from an isolated "
+        "sandbox. Prefer walk_fv "
         "over uefi_walk for PI-structure parsing and PE32/TE extraction. Treat "
         "heuristics and string markers as leads, not final vulnerability verdicts."
     ),
@@ -282,9 +306,13 @@ async def tool_status() -> str:
                 "extract_vss": "available",
                 "vss_parse": "available",
                 "list_smi": "available",
+                "firmware_diff": "available",
                 "lief_info": "available" if lief_info else "unavailable",
                 "yara_scan": "available" if yara_scan else "unavailable",
                 "pack_detect": "available" if pack_detect else "unavailable",
+                "ghidra_evidence": "available" if ghidra_evidence else "unavailable",
+                "yara_backtest": "available" if yara_backtest else "unavailable",
+                "dynamic_evidence": "available" if dynamic_evidence else "unavailable",
             },
             "python_modules": {
                 "lief": mod("lief"),
@@ -296,6 +324,8 @@ async def tool_status() -> str:
                 "binwalk": _which("binwalk") or "absent",
                 "UEFIExtract": _which("UEFIExtract") or _which("uefitool") or "absent",
                 "chipsec_main": _which("chipsec_main") or "absent",
+                "analyzeHeadless": ((ghidra_evidence._find_ghidra(None) or "absent")
+                                    if ghidra_evidence else "absent"),
             },
             "fallbacks": {
                 "binwalk_scan": "falls back to the internal signature scan",
@@ -467,7 +497,10 @@ async def uefitool_extract(image: str, out_dir: str) -> str:
                         "and put UEFIExtract on PATH",
                 "fallback": "call walk_fv_ with extract_dir to pull PE32/TE sections",
             }
-        out = Path(out_dir)
+        out = Path(out_dir).expanduser().resolve()
+        if out.exists() and any(out.iterdir()):
+            return {"error": f"output directory is not empty: {out}",
+                    "hint": "use a fresh directory so the extraction manifest cannot mix artifacts"}
         out.mkdir(parents=True, exist_ok=True)
         try:
             proc = subprocess.run(
@@ -476,10 +509,31 @@ async def uefitool_extract(image: str, out_dir: str) -> str:
             )
         except Exception as e:  # noqa: BLE001
             return {"error": f"UEFIExtract failed: {e}"}
+        extracted_files = []
+        manifest_truncated = False
+        for item in sorted(out.rglob("*")):
+            if not item.is_file() or not item.resolve().is_relative_to(out.resolve()):
+                continue
+            if len(extracted_files) >= 10000:
+                manifest_truncated = True
+                break
+            digest = hashlib.sha256()
+            with item.open("rb") as stream:
+                for chunk in iter(lambda: stream.read(1 << 20), b""):
+                    digest.update(chunk)
+            extracted_files.append({
+                "path": str(item),
+                "relative_path": str(item.relative_to(out)),
+                "size": item.stat().st_size,
+                "sha256": digest.hexdigest(),
+            })
         return {
             "attempted": "UEFIExtract",
             "scanner": exe,
             "out_dir": str(out),
+            "extracted_file_total": len(extracted_files),
+            "extracted_files": extracted_files,
+            "manifest_truncated": manifest_truncated,
             "exit_code": proc.returncode,
             "stdout": proc.stdout[-8000:],
             "stderr": proc.stderr[-4000:],
@@ -531,6 +585,57 @@ async def pack_detect_(target: str) -> str:
         if not p.is_file():
             return {"error": f"not a file: {p}"}
         return pack_detect.detect(p)
+
+    return _dumps(await _in_thread(run))
+
+
+@server.tool(name="ghidra_evidence", description="Run bounded Ghidra headless static analysis and export an address-linked function inventory and call references. The target is analyzed, never executed. Requires Ghidra analyzeHeadless on PATH or GHIDRA_ANALYZE_HEADLESS.")
+async def ghidra_evidence_(target: str, max_functions: int = 5000,
+                           timeout_seconds: int = 900) -> str:
+    if ghidra_evidence is None:
+        return _dumps({"error": "ghidra_evidence module unavailable"})
+
+    def run() -> dict:
+        return ghidra_evidence.analyze(target, max_functions=max_functions,
+                                       timeout=timeout_seconds)
+
+    return _dumps(await _in_thread(run))
+
+
+@server.tool(name="yara_backtest", description="Compile YARA rules and scan a bounded sample corpus. Supply an optional JSON manifest with SHA-256-pinned sample paths and per-rule boolean labels to calculate precision, recall, and F1 only on labeled pairs. Samples are read, never executed.")
+async def yara_backtest_(corpus: str, rules: str, manifest: str | None = None,
+                         max_samples: int = 500, max_file_mb: int = 256,
+                         timeout_seconds: int = 30,
+                         total_timeout_seconds: int = 900) -> str:
+    if yara_backtest is None:
+        return _dumps({"error": "yara_backtest module unavailable"})
+
+    def run() -> dict:
+        return yara_backtest.backtest(corpus, rules, manifest, max_samples,
+                                      max_file_mb, timeout_seconds,
+                                      total_timeout_seconds)
+
+    return _dumps(await _in_thread(run))
+
+
+@server.tool(name="firmware_diff", description="Compare two UEFI firmware images by FV/FFS identity and SHA-256, or compare two extracted payload directories by relative path. Optional extracted directories let you compare decompressed UEFIExtract results. Read-only; differences are not vulnerability verdicts.")
+async def firmware_diff_(baseline: str, candidate: str,
+                         baseline_extracted: str | None = None,
+                         candidate_extracted: str | None = None) -> str:
+    def run() -> dict:
+        return firmware_diff.compare(baseline, candidate,
+                                     baseline_extracted, candidate_extracted)
+
+    return _dumps(await _in_thread(run))
+
+
+@server.tool(name="dynamic_evidence", description="Normalize up to 2000 events from exported CAPE/Cuckoo JSON, Sysmon JSONL, or Procmon CSV telemetry into a behavior timeline and candidate IOC list. Offline parsing only; does not run samples or control a sandbox.")
+async def dynamic_evidence_(source: str, sample_sha256: str | None = None) -> str:
+    if dynamic_evidence is None:
+        return _dumps({"error": "dynamic_evidence module unavailable"})
+
+    def run() -> dict:
+        return dynamic_evidence.normalize(source, sample_sha256)
 
     return _dumps(await _in_thread(run))
 

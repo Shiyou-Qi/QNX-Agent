@@ -6,7 +6,8 @@
 #
 #   tool_status, walk_fv, extract_vss, parse_vss, list_smi,
 #   uefi_firmware_parse, binwalk_scan, uefitool_extract,
-#   lief_info, yara_scan, pack_detect
+#   lief_info, yara_scan, pack_detect, ghidra_evidence, yara_backtest,
+#   firmware_diff, dynamic_evidence
 #
 # The server is `server/uefi_mcp_server.py`. It locates the Qi-NX skill scripts
 # from its own path, so this row needs no machine-specific absolute paths.
@@ -32,7 +33,7 @@
 #       command: '/absolute/path/to/python'
 #       args: ['/absolute/path/to/dsh-uefi-mcp/server/uefi_mcp_server.py']
 #       cwd: '/absolute/path/to/workspace'
-#       toolCallTimeoutMs: 120000
+#       toolCallTimeoutMs: 1860000
 #       failOnStartupError: false
 #
 # Do not add a second mcp-client row with `serverName: uefi`: the second one
@@ -48,7 +49,8 @@
         args:
           - 'dsh-uefi-mcp/server/uefi_mcp_server.py'
         cwd: !!js process.env.QINX_WORKSPACE || '.'
-        toolCallTimeoutMs: 120000
+        # Headless Ghidra imports may take several minutes on large binaries.
+        toolCallTimeoutMs: 1860000
         # Keep the harness startable even if the server is broken; `tool_status`
         # then reports what is missing instead of blocking startup.
         failOnStartupError: false

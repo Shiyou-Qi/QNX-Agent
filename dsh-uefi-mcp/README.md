@@ -25,6 +25,10 @@ All tools are published under the `uefi` server name, so the model sees
 | `lief_info` | `target`, `sections?`, `imports?`, `exports?`, `relocs?` | PE/ELF/Mach-O triage |
 | `yara_scan` | `target`, `rules?`, `max_matches?` | built-in triage ruleset or your own rules |
 | `pack_detect` | `target` | heuristic packer/protector verdict with evidence and limitations |
+| `ghidra_evidence` | `target`, `max_functions?`, `timeout_seconds?` | Ghidra headless function inventory and callsite references with address/image-offset mapping; static analysis only |
+| `yara_backtest` | `corpus`, `rules`, `manifest?`, `max_samples?`, `max_file_mb?`, timeouts? | bounded corpus scan; labeled sample/rule pairs produce precision, recall, F1, and confusion counts |
+| `firmware_diff` | `baseline`, `candidate`, extracted directories? | compare FV/FFS inventories and hashes; optionally compare UEFIExtract outputs by relative path |
+| `dynamic_evidence` | `source`, `sample_sha256?` | normalize exported CAPE/Cuckoo JSON, Sysmon JSONL, or Procmon CSV into an event timeline and candidate IOCs; offline parsing only |
 
 Broken or missing prerequisites never produce a fake success: tools return
 `{"error": "..."}` plus a `hint` or `fallback` field naming the working
@@ -37,14 +41,56 @@ tool_status                              # what is available here?
 binwalk_scan image.bin                   # container + compression triage
 walk_fv image.bin extract_dir=out/       # FV/FFS/section inventory + PE32 dumps
 lief_info out/.../Driver.pe32 sections=true
+ghidra_evidence out/.../Driver.pe32
 extract_vss image.bin out_dir=vss/       # only if a store is present
 parse_vss vss/vss_00_....bin
 list_smi image.bin guids=guids.csv       # Ring -2 modules
+yara_backtest corpus/ rules=rules.yar manifest=labels.json
+dynamic_evidence sandbox-report.json
 ```
 
 Prefer `walk_fv` over `uefi_walk.py`: `walk_fv` parses the PI structures directly
 (honouring `HeaderLength` and `EFI_FFS_FILE_HEADER2`) and extracts sections.
 `uefi_walk.py` remains as the no-dependency coarse fallback.
+
+`ghidra_evidence` requires Ghidra's `analyzeHeadless`. Put it on `PATH`, set
+`GHIDRA_HOME`, or set `GHIDRA_ANALYZE_HEADLESS` to the executable path. It exports
+functions, prototypes, sizes, instruction counts, and direct call references,
+including each callsite's address and image-relative offset. It does static
+analysis only; Ghidra auto-analysis may miss indirect calls or function boundaries.
+
+`yara_backtest` compiles the supplied rules once and scans up to 500 files by
+default (256 MiB per file, 15-minute corpus wall-clock cap). A manifest maps
+individual rule names to `true` or `false` labels for each relative sample path
+and pins each sample with SHA-256. Metrics count only explicitly labeled
+sample/rule pairs; unlabeled hits are surfaced but not called false positives.
+Without labels, the result is a corpus scan, not a quality score. Example:
+
+```json
+{
+  "samples": [
+    {"path": "malicious/sample.exe", "sha256": "<64 hex characters>", "labels": {"qi_rule_a": true}},
+    {"path": "benign/utility.exe", "sha256": "<64 hex characters>", "labels": {"qi_rule_a": false}}
+  ]
+}
+```
+See [`../.dsh/skills/reverse-engineering/scripts/yara_backtest.py`](../.dsh/skills/reverse-engineering/scripts/yara_backtest.py)
+for the schema and CLI flags.
+
+`uefitool_extract` now returns a bounded manifest of extracted files with sizes
+and SHA-256 hashes. Extract the baseline and candidate images into separate
+directories, then pass both directories to `firmware_diff` alongside the raw
+images. It compares FV / FFS identity and hashes in the raw images and relative
+paths / hashes in the extracted trees. Compressed or GUID-defined sections still
+depend on UEFIExtract's format support; a difference alone is not a vulnerability.
+
+`dynamic_evidence` returns up to 2,000 events per call; split larger logs by
+time or process. It ingests existing runtime telemetry exports only; it does not
+execute samples or connect to a sandbox. Supported formats are CAPE/Cuckoo JSON,
+Sysmon JSONL, and Procmon CSV. Extracted network indicators are labeled as
+candidates and must be checked against context and baseline traffic. Pass the
+known sample SHA-256 when available; the parser records it as user-supplied
+metadata and does not claim to validate the original binary.
 
 ---
 
@@ -64,7 +110,7 @@ only declares a portable default:
         command: !!js process.env.QINX_PYTHON || 'python'
         args: ['dsh-uefi-mcp/server/uefi_mcp_server.py']
         cwd: !!js process.env.QINX_WORKSPACE || '.'
-        toolCallTimeoutMs: 120000
+        toolCallTimeoutMs: 1860000
         failOnStartupError: false
 ```
 
@@ -91,7 +137,7 @@ replaces the bundle's wholesale:
     command: '/absolute/path/to/python'
     args: ['/absolute/path/to/dsh-uefi-mcp/server/uefi_mcp_server.py']
     cwd: '/absolute/path/to/workspace'
-    toolCallTimeoutMs: 120000
+    toolCallTimeoutMs: 1860000
     failOnStartupError: false
 ```
 

@@ -28,6 +28,7 @@ external binaries actually exist on this host.
 | `mcp__uefi__lief_info` | `lief_info.py` | PE32/TE triage of extracted sections |
 | `mcp__uefi__yara_scan` | `yara_scan.py` | packer / crypto / IOC rules |
 | `mcp__uefi__pack_detect` | `pack_detect.py` | packing verdict from entropy + sections + imports |
+| `mcp__uefi__firmware_diff` | `firmware_diff.py` | compare FV/FFS identities, module hashes, and extracted payload directories |
 
 Script fallback, when MCP is unavailable: `python .dsh/skills/firmware-uefi/scripts/<tool>.py <args>`.
 Every script accepts `--json` and returns the same structure as its MCP tool.
@@ -52,8 +53,16 @@ Two deliberate design choices worth knowing:
   for authoritative GUID attribution; without it you get FFS-type and
   string-marker evidence only.
 - `walk_fv` reports compressed (`EFI_SECTION_COMPRESSION`) and GUID-defined
-  sections but does not decompress them. Use `uefi_firmware_parse` or
-  UEFIExtract, then re-run `walk_fv` / `lief_info` on the results.
+  sections but does not decompress them. `uefi_firmware_parse` gives a
+  decompression-aware inventory; for extracted bytes, use UEFIExtract, then
+  re-run `walk_fv` / `lief_info` on the results.
+- For version comparisons, hash and inventory both original images with
+  `mcp__uefi__firmware_diff`. If compressed/GUID-defined sections matter, first
+  run `mcp__uefi__uefitool_extract` separately for each image, preserve its
+  SHA-256 manifest, then pass both extracted directories to `firmware_diff` as
+  well. Compare matching FV/FFS files and extracted path/hash changes; do not
+  treat a binary difference alone as a vulnerability. State unsupported or
+  still-compressed content as a limitation.
 - `parse_vss` reports the raw variable state and marks the selected current
   copy. Prefer `current: true` for platform-state conclusions; deleted and
   header-only records are historical evidence, not live configuration.
@@ -207,7 +216,13 @@ For every claim, separate direct observation from interpretation; cite tool and
 output field or file location, GUID, offset/RVA, confidence, and plausible
 alternative explanations. Explicitly mark missing, unavailable, untested, and
 unconfirmed data; never fill gaps by guessing. List negative results only for
-checks actually performed. End with the exact declaration
+checks actually performed. Assign stable finding and evidence IDs (`F-001`,
+`E-001`) and link each conclusion to evidence recording artifact SHA-256, tool
+and version, output field/method, firmware region/FV/FFS GUID, and physical or
+image-relative offset where available. Use
+[`templates/reverse-engineering-report.md`](../../../templates/reverse-engineering-report.md)
+when available, adapting its tables for firmware; remove all placeholders before
+delivery. End with the exact declaration
 `— Qi-NX-Agent (Copyright Qi-NX)` on the final line, after all appendices.
 
 ## 9. Subagent fan-out

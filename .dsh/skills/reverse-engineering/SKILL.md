@@ -19,6 +19,8 @@ as `mcp__uefi__*` tools. Prefer them; they return structured JSON.
 | `mcp__uefi__pack_detect` | `pack_detect.py` | packer / VMProtect / Themida fingerprint via section name + entropy + import shape |
 | `mcp__uefi__yara_scan` | `yara_scan.py` | built-in packer / crypto / IOC rules; `rules=<dir>` plugs in your own ruleset |
 | `mcp__uefi__binwalk_scan` | internal signatures | magic + compression offsets for container triage |
+| `mcp__uefi__ghidra_evidence` | `ghidra_evidence.py` | Ghidra headless function inventory and address-linked call references (static only) |
+| `mcp__uefi__yara_backtest` | `yara_backtest.py` | compile rules and measure them against a sample corpus using explicit per-rule labels |
 | `mcp__uefi__walk_fv`, `extract_vss`, `parse_vss`, `list_smi` | firmware scripts | firmware / UEFI work (see the `firmware-uefi` skill) |
 
 Script fallback, when MCP is unavailable:
@@ -64,6 +66,13 @@ All scripts and the MCP server print `by Qi-NX-Agent (Copyright Qi-NX)`.
 - Disassemble:
   - IDA Pro / Ghidra / Binary Ninja for full PE/ELF/Mach-O; radare2 (`r2 -A`, `pdf`, `aaa`) for scripted work.
   - Always dump `.text` with `objdump -d -M intel` for cross-checks.
+- When Ghidra is installed, use `mcp__uefi__ghidra_evidence` (or
+  `python .dsh/skills/reverse-engineering/scripts/ghidra_evidence.py <binary> --json`)
+  to export function prototypes, sizes, instruction counts, and call references
+  with addresses and image-relative offsets. Treat these as Ghidra auto-analysis
+  evidence; verify important paths in the disassembly and account for indirect
+  calls or unresolved boundaries. This tool analyzes statically and does not run
+  the sample.
 - Recover imports and resolve API calls; note unpacked-thunk patterns.
 - Cross-reference strings → code; build the call graph around interesting strings.
 - For .NET: dnSpy / ILSpy. For Java: jadx / CFR. For Delphi: IDR.
@@ -79,6 +88,15 @@ All scripts and the MCP server print `by Qi-NX-Agent (Copyright Qi-NX)`.
 - Watch imports of interest: crypto (Crypt*), network (send/recv/WSA*), file IO (CreateFile/WriteFile), process injection (OpenProcess/WriteProcessMemory/CreateRemoteThread).
 - Capture traffic: Wireshark/mitmproxy/Fiddler with verdict logging.
 - Snapshot the VM before any execution.
+- Do not launch a sample from the analyst host. Run it only in an explicitly
+  isolated, disposable VM/sandbox with controlled networking. Export behavior
+  telemetry, then normalize it with `mcp__uefi__dynamic_evidence` (or
+  `dynamic_evidence.py`) for CAPE/Cuckoo JSON, Sysmon JSONL, and Procmon CSV.
+  The returned timeline is capped at 2,000 events; split larger logs by time or
+  process and correlate the separate outputs.
+  Correlate each event with the artifact hash and static findings. The normalizer
+  only reads existing exports; it does not execute samples or submit them to a
+  remote service. Treat extracted domains/IPs as candidates until validated.
 
 ## 4. Unpacking
 
@@ -153,6 +171,19 @@ All scripts and the MCP server print `by Qi-NX-Agent (Copyright Qi-NX)`.
   relevant. Include IOC tables, MITRE ATT&CK mapping, capability breakdown, and
   recommended detections (YARA, Sigma, Suricata) when applicable; state `None
   identified` only when the relevant checks were actually performed.
+- Link every material claim to a stable evidence ID (`E-001`, `E-002`, ...), and
+  every finding to one or more evidence IDs (`F-001` → `E-001`). The evidence
+  ledger records the artifact SHA-256, tool/version, output field or method,
+  address, file offset/image offset/RVA when applicable, and a concise direct
+  observation. Keep evidence and interpretation in separate columns or bullets.
+  Use [`templates/reverse-engineering-report.md`](../../../templates/reverse-engineering-report.md)
+  when available; do not leave template placeholders in a delivered report.
+- Before shipping a custom YARA rule, compile and backtest it with
+  `mcp__uefi__yara_backtest` (or `yara_backtest.py`) against representative,
+  hash-pinned positive and negative samples. Use the manifest's per-sample,
+  per-rule boolean labels. Report TP/FP/FN/TN and precision/recall/F1 only for
+  labeled pairs; unlabeled hits are not false positives. State corpus coverage
+  and label limits, and revise rules with false positives or missed positives.
 - End every report with the exact declaration `— Qi-NX-Agent (Copyright Qi-NX)`
   on the final line, after all appendices and tables.
 

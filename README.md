@@ -27,7 +27,7 @@
 |---|---|
 | **Agent presets** | Binary / protocol, Firmware / UEFI, and a coordinating Team Lead |
 | **MCP server** | Local `mcp__uefi__*` tools for triage, firmware parsing, and NVRAM analysis |
-| **Analysis scripts** | Nine standalone Python utilities; JSON output supported |
+| **Analysis scripts** | Thirteen standalone Python utilities; JSON output supported |
 | **Install model** | One composition bundle for the complete kit, or individual bundles for development |
 | **Reporting** | Structured reports with artifact identity, evidence, confidence, limitations, and a signed footer |
 
@@ -60,9 +60,11 @@ Requested reports use a clear title and metadata header, an executive summary, a
 — Qi-NX-Agent (Copyright Qi-NX)
 ```
 
+A reusable [report template](templates/reverse-engineering-report.md) includes a finding table and evidence ledger that links claims to artifact hashes, tool output, and addresses.
+
 ### Local tools, structured results
 
-The [UEFI MCP server](dsh-uefi-mcp/) exposes the toolkit as local `mcp__uefi__*` tools over stdio. Use them from a preset or run the Python scripts directly; scripts support `--json` for automation.
+The [UEFI MCP server](dsh-uefi-mcp/) exposes the toolkit as local `mcp__uefi__*` tools over stdio. Use them from a preset or run the Python scripts directly; scripts support `--json` for automation. Firmware version comparison covers FV/FFS records and can also compare UEFIExtract output trees by path and SHA-256.
 
 ## Toolkit
 
@@ -74,11 +76,15 @@ The [UEFI MCP server](dsh-uefi-mcp/) exposes the toolkit as local `mcp__uefi__*`
 | [`list_smi.py`](.dsh/skills/firmware-uefi/scripts/list_smi.py) | Enumerate SMM modules and dispatch markers for follow-up analysis |
 | [`uefi_walk.py`](.dsh/skills/firmware-uefi/scripts/uefi_walk.py) | Dependency-light fallback firmware-volume scanner |
 | [`chipsec_abstract.py`](.dsh/skills/firmware-uefi/scripts/chipsec_abstract.py) | Normalize CHIPSEC logs into structured JSON |
+| [`firmware_diff.py`](.dsh/skills/firmware-uefi/scripts/firmware_diff.py) | Compare firmware FV/FFS inventories or extracted payload trees by identity and hash |
 | [`lief_info.py`](.dsh/skills/reverse-engineering/scripts/lief_info.py) | Identify PE / ELF / Mach-O metadata, sections, imports, and exports |
 | [`pack_detect.py`](.dsh/skills/reverse-engineering/scripts/pack_detect.py) | Assess packer / protector indicators using multiple heuristics |
 | [`yara_scan.py`](.dsh/skills/reverse-engineering/scripts/yara_scan.py) | Scan built-in triage rules or a supplied YARA ruleset |
+| [`yara_backtest.py`](.dsh/skills/reverse-engineering/scripts/yara_backtest.py) | Compile and backtest YARA rules against explicitly labeled corpus samples |
+| [`ghidra_evidence.py`](.dsh/skills/reverse-engineering/scripts/ghidra_evidence.py) | Export Ghidra functions and callsites linked to addresses and image offsets |
+| [`dynamic_evidence.py`](.dsh/skills/reverse-engineering/scripts/dynamic_evidence.py) | Normalize existing CAPE/Cuckoo, Sysmon, and Procmon telemetry exports |
 
-The MCP server also provides availability checks, binary triage, signature scans, firmware parsing, and extraction helpers. See the [MCP server guide](dsh-uefi-mcp/README.md) for the complete tool list and protocol details.
+The MCP server also provides availability checks, binary triage, signature scans, firmware parsing, and extraction helpers. The optional `ghidra_evidence` tool requires Ghidra `analyzeHeadless` on `PATH` (or `GHIDRA_ANALYZE_HEADLESS`); it performs static analysis only. The `yara_backtest` tool scans a bounded sample corpus and computes quality metrics only for explicitly labeled sample/rule pairs. The `dynamic_evidence` tool reads existing sandbox/host telemetry exports without executing samples. See the [MCP server guide](dsh-uefi-mcp/README.md) for the complete tool list and manifest format.
 
 ## Install
 
@@ -135,6 +141,8 @@ Core firmware parsers `walk_fv`, `extract_vss`, `vss_parse`, `list_smi`, and `ch
 | **binwalk** | Extended signatures and embedded-data triage | The scanner has an internal signature fallback; Windows users can use WSL or a Rust build |
 | **UEFIExtract** | Extract compressed or GUID-defined sections | Available from [LongSoft / UEFITool](https://github.com/LongSoft/UEFITool); add `UEFIExtract` to `PATH` |
 | **CHIPSEC** | Live platform security checks and logs | Run checks on the target system; `chipsec_abstract` only parses logs and does not require CHIPSEC |
+| **Ghidra** | Function and callsite evidence | Install Ghidra and expose `analyzeHeadless` on `PATH`, set `GHIDRA_HOME`, or set `GHIDRA_ANALYZE_HEADLESS`; analysis is static |
+| **CAPE / Cuckoo, Sysmon, Procmon** | Runtime behavior telemetry | Run samples only in an isolated disposable sandbox/VM, export logs, then use `dynamic_evidence` to normalize them offline |
 
 The built-in binwalk fallback recognizes 23 signatures, including firmware volumes, flash descriptors, common compression formats, Android boot images, FIT / DTB, PE / ELF, and selected firmware compression GUIDs. Results identify which scanner produced them.
 
@@ -164,7 +172,7 @@ The suite compiles scripts, checks their help output, validates parsers against 
 ## Scope and limitations
 
 - **Heuristics are not verdicts.** A packer or YARA hit is a lead; no known indicator does not establish that a file is clean.
-- **Firmware extraction has boundaries.** `walk_fv` identifies compressed and GUID-defined sections but does not decompress them; use `uefi_firmware_parse` or UEFIExtract, then triage extracted content again.
+- **Firmware extraction has boundaries.** `walk_fv` identifies compressed and GUID-defined sections but does not decompress them; use `uefi_firmware_parse` for decompression-aware inventory or UEFIExtract when you need extracted bytes, then triage the output again.
 - **Some attribution needs reference data.** `list_smi` does not hardcode protocol GUIDs. Supply an authoritative `guids.csv` for GUID attribution; otherwise findings are based on structural and string-marker evidence.
 - **NVRAM can contain historical records.** `vss_parse` marks the selected current copy. Deleted records can be useful forensic evidence, but are not live configuration.
 - **SMM inventory is not handler recovery.** `list_smi` finds modules and dispatch markers; use a disassembler to recover handler inputs and validate behavior.
