@@ -2,9 +2,9 @@
 
 # QNX-Agent
 
-### Reverse-engineering, firmware forensics, and protocol analysis for DeepSeek Harness.
+### Reverse-engineering, Android APK security, firmware forensics, and protocol analysis for DeepSeek Harness.
 
-**Three focused agents. One local MCP toolkit. Evidence-first analysis from triage to report.**
+**Four selectable presets. One local MCP toolkit. Evidence-first analysis from triage to report.**
 
 [![GitHub stars](https://img.shields.io/github/stars/Shiyou-Qi/Qi-NX-Agent?style=for-the-badge&logo=github&color=171717)](https://github.com/Shiyou-Qi/Qi-NX-Agent/stargazers)
 [![Last commit](https://img.shields.io/github/last-commit/Shiyou-Qi/Qi-NX-Agent?style=for-the-badge&logo=git&color=7c3aed)](https://github.com/Shiyou-Qi/Qi-NX-Agent/commits/main)
@@ -25,7 +25,7 @@
 
 | | Included |
 |---|---|
-| **Agent presets** | Binary / protocol, Firmware / UEFI, and a coordinating Team Lead |
+| **Agent presets** | Binary / protocol, Android APK, Firmware / UEFI, and a coordinating Team Lead |
 | **MCP server** | Local `mcp__uefi__*` tools for triage, firmware parsing, and NVRAM analysis |
 | **Analysis playbooks** | Binary/protocol, Android APK, and firmware reverse-engineering workflows |
 | **Analysis scripts** | Fifteen standalone Python utilities; JSON output supported |
@@ -39,6 +39,7 @@ Install the complete bundle once, then select the preset that fits the task in t
 | Preset | Best for | Focus |
 |---|---|---|
 | **QNX-Agent-二进制逆向** (`reversing`) | Unknown binaries, Android apps, and protocol behavior | PE / ELF / Mach-O / APK triage, app components, DEX, native code, dependencies, packing, crypto, and protocol reversing |
+| **QNX-Agent-安卓 APK 逆向** (`android-apk`) | Android APK and app security | APK/split identity, signing, Manifest/components, DEX/Smali, WebView, dependencies/CVEs, JNI/native code, and authorized dynamic analysis |
 | **QNX-Agent-固件逆向** (`uefi`) | BIOS images, SPI dumps, and capsules | FV / FFS structure, NVRAM / VSS, SMM triage, boot flow, and trust anchors |
 | **QNX-Agent-团队协作** (`reversing-team`) | Multi-layer investigations | Coordinates binary and firmware work, delegates scoped threads, and synthesizes findings |
 
@@ -55,10 +56,11 @@ Each preset loads its matching playbook:
 | 预设 | 模式说明 | 如何使用 |
 |---|---|---|
 | **QNX-Agent-二进制逆向**（`reversing`） | 通用二进制、Android APK 与协议逆向，适合 PE / ELF / Mach-O / APK、应用组件、DEX/native、依赖漏洞与安全配置分析。 | 选择该预设，提供 APK 或 split 文件路径及分析目标；先识别哈希、包名、版本和签名，再按授权范围做静态分析，动态测试需指定隔离模拟器。 |
+| **QNX-Agent-安卓 APK 逆向**（`android-apk`） | Android 应用专项预设，适合 APK、split APK、APKS、XAPK、APKM、AAB 和配套源码，覆盖静态逆向、漏洞验证与移动安全评估。 | 选择该预设，提供应用包路径及关注目标；默认静态分析。动态分析需明确授权范围，并准备隔离、可回滚的 Android 模拟器和测试数据。 |
 | **QNX-Agent-固件逆向**（`uefi`） | 固件专用分析，适合 SPI / BIOS 镜像、UEFI Capsule、EC 与嵌入式 SoC，重点覆盖 FV / FFS、NVRAM、SMM 和启动链。 | 选择该预设，提供固件文件、设备型号或平台信息；先识别镜像与区域，再指定关注的驱动、变量或启动阶段。 |
-| **QNX-Agent-团队协作**（`reversing-team`） | 多代理协作，适合同时涉及二进制、协议和固件，或需要并行调查多个独立问题的任务。 | 选择该预设，说明总目标、样本路径、优先级和操作限制；协调代理拆分独立子任务，再汇总并核对证据。 |
+| **QNX-Agent-团队协作**（`reversing-team`） | 多代理协作，适合同时涉及二进制、Android APK、协议和固件，或需要并行调查多个独立问题的任务。 | 选择该预设，说明总目标、样本路径、优先级和操作限制；协调代理拆分独立子任务，再汇总并核对证据。 |
 
-三个模式都支持直接用自然语言提问。提交样本时请明确路径；若只想做静态分析，也请在请求中注明。团队协调模式会在任务确实可拆分时再分派工作。Android APK 分析默认先做静态检查；动态分析只在获授权的隔离模拟器中进行。
+四个预设都支持直接用自然语言提问。提交样本时请明确路径；若只想做静态分析，也请在请求中注明。团队协调模式会在任务确实可拆分时再分派工作。Android APK 分析默认先做静态检查；动态分析只在获授权的隔离模拟器中进行。
 
 ## What makes the workflow useful
 
@@ -124,7 +126,7 @@ In the DSH plugin manager, install the GitHub bundle:
 plugin_manager  action=install_bundle  target=github:Shiyou-Qi/Qi-NX-Agent
 ```
 
-The root `package.json` composes the three presets and the MCP bundle into one install target.
+The root `package.json` composes the four presets and the MCP bundle into one install target.
 
 ### Option B — Install one bundle while developing
 
@@ -132,7 +134,7 @@ The root `package.json` composes the three presets and the MCP bundle into one i
 plugin_manager  action=install_bundle  target=<absolute path to a bundle directory>
 ```
 
-Available bundle directories: `dsh-reversing-preset`, `dsh-uefi-preset`, `dsh-reversing-team-preset`, and `dsh-uefi-mcp`.
+Available bundle directories: `dsh-reversing-preset`, `dsh-android-apk-preset`, `dsh-uefi-preset`, `dsh-reversing-team-preset`, and `dsh-uefi-mcp`. The standalone Android preset provides its own persona and Android playbook access; install the complete root bundle to include the shared MCP tools as well.
 
 > **Choose one install mode.** The root bundle and standalone bundles declare the same row IDs. Installing both can create duplicate declarations.
 
@@ -194,6 +196,7 @@ The suite compiles scripts, checks their help output, validates parsers against 
 .
 ├── package.json                    Complete composition bundle
 ├── dsh-reversing-preset/           Binary / protocol preset
+├── dsh-android-apk-preset/         Android APK reverse-engineering preset
 ├── dsh-uefi-preset/                Firmware / UEFI preset
 ├── dsh-reversing-team-preset/      Coordinating Team Lead preset
 ├── dsh-uefi-mcp/                   Local MCP server and bundle

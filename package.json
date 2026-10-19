@@ -1,6 +1,6 @@
 {
   "name": "qi-nx-agent",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "private": true,
   "type": "module",
   "description": "QNX-Agent — DeepSeek Harness reverse-engineering agents for binaries, Android APKs, protocols, and firmware, with evidence-led vulnerability and security assessments. Copyright Qi-NX.",
@@ -20,6 +20,7 @@
     "bundle": {
       "patch": [
         "./dsh-reversing-preset/cordis.patch.yml",
+        "./dsh-android-apk-preset/cordis.patch.yml",
         "./dsh-uefi-preset/cordis.patch.yml",
         "./dsh-reversing-team-preset/cordis.patch.yml",
         "./dsh-uefi-mcp/cordis.patch.yml"

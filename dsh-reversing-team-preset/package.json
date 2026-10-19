@@ -1,6 +1,6 @@
 {
   "name": "@local/reversing-team-preset",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "private": true,
   "type": "module",
   "description": "QNX-Agent-团队协作：多代理协作开展二进制、Android APK、固件逆向与安全评估。Qi-NX 版权所有。",

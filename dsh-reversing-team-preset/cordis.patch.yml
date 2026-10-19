@@ -25,7 +25,7 @@
         name: QNX-Agent-团队协作
         description: >-
           多代理协作模式，适合同时涉及二进制、Android APK、漏洞验证与固件的复杂调查；汇总证据并评估整体风险。用法：提供样本路径、目标与限制，由其拆分并汇总独立任务。Qi-NX 版权所有。
-        order: 7
+        order: 8
         plugins:
           - id: persona
             name: '@deepseek-ai/dsh-persona'

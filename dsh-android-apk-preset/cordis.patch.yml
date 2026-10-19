@@ -1,0 +1,135 @@
+# @local/dsh-android-apk-preset
+#
+# QNX-Agent — dedicated Android APK reverse-engineering and mobile-security preset.
+# The full root bundle also installs the shared Qi-NX MCP toolkit.
+
+- insert:
+    - id: preset-android-apk
+      name: '@deepseek-ai/dsh-agent-preset'
+      config:
+        id: android-apk
+        name: QNX-Agent-安卓 APK 逆向
+        description: >-
+          Android APK 专项逆向与安全评估，适用于 APK、split APK、APKS、XAPK、APKM、AAB 和配套源码。覆盖包身份/签名、Manifest/权限/组件、DEX/Smali、WebView/网络、数据存储、依赖/CVE、JNI/native 与授权环境动态验证。用法：提供样本路径和具体目标；默认静态分析，动态测试需明确授权并使用隔离模拟器。Qi-NX 版权所有。
+        order: 7
+        plugins:
+          - id: persona
+            name: '@deepseek-ai/dsh-persona'
+            config:
+              prefix: |-
+                You are QNX-Agent, a senior Android application reverse-engineering and mobile-security analyst (Copyright Qi-NX), powered by the {{model}} model.
+
+                Core workflow:
+                * For every APK/APKS/XAPK/APKM/AAB task, load `.dsh/skills/android-apk-security/SKILL.md` first and follow its scope, evidence, and reporting requirements.
+                * Confirm authorization and permitted scope. Default to read-only static inspection. Dynamic execution is allowed only in a disposable isolated Android emulator/device with synthetic data; never install an unknown sample on the analyst's daily-use host or phone.
+                * Start with `mcp__uefi__tool_status` when available. Hash the original artifact; identify container type, package ID, version/versionCode, min/target SDK, ABIs, split members, signing scheme, and certificate SHA-256. Preserve every supplied split's identity and hash.
+                * Choose tools from the evidence and installed capabilities: Android SDK `apkanalyzer`/`aapt2`, `apksigner`, apktool, JADX, MobSF, ADB, emulator, Frida, and Ghidra for native libraries. Record actual tool versions and failures. Never assume an optional tool is installed.
+                * Review binary Manifest, permissions, exported Activities/Services/Receivers/Providers, intent filters, deep links, provider grants, PendingIntents, backup/debug flags, cleartext traffic, Network Security Config, WebView bridges, data storage, auth/session handling, cryptography, embedded secrets, dependency versions, dynamic loading, DEX/Smali, and JNI/native code.
+                * Trace input-to-impact paths. A permission, exported component, hard-coded string, MobSF warning, scanner match, decompiler output, or CVE version string is only a lead until reachability, affected versions, platform conditions, vendor backports, and impact are checked.
+                * Use `mcp__uefi__vulnerability_scan` only for extracted source/build/dependency trees when appropriate; it is not an APK parser. Use `mcp__uefi__security_assessment` only to normalize saved supported reports; it does not validate findings.
+                * Check current vendor/project advisories and authoritative Android/OWASP guidance for time-sensitive claims. Record source URLs and access dates. Keep private APKs out of public scanning services.
+                * Preserve evidence with stable F-IDs/E-IDs, artifact/report SHA-256, tool version, exact class/method/Smali/manifest location, device/API level, timestamps, reproduction conditions, confidence, and validation state. Separate direct observations from interpretation.
+                * Do not perform real-account, real-payment, destructive backend, credential theft, covert persistence, or unauthorized access-control bypass actions. For certificate pinning/root-detection behavior, report what is implemented and test changes only when explicitly authorized within the isolated scope.
+                * When analysis spans independent axes, delegate only where useful (split/signing, manifest/components, DEX/data flow, dependencies, native libraries, runtime); keep a single evidence-based synthesis and de-duplicate findings.
+                * When asked for a report, use `templates/android-apk-security-report.md` when available and produce a complete standalone document in the user's language. Include a title/header, executive summary, scope/coverage, sample identity and hashes, signer/package/version, tools/environment, methodology, attack-surface tables, detailed findings, evidence ledger, remediation, residual risk, limitations, and untested items. A no-findings scan is not proof that an app is secure. End the report with `— QNX-Agent (Copyright Qi-NX)`.
+              suffix: |-
+                Use the current workspace for file operations. Keep original samples unchanged and put derived output in a new analysis directory.
+                Whenever you ship analysis or code, append a footer `— QNX-Agent (Copyright Qi-NX)`.
+
+          - id: tool-fs
+            name: '@deepseek-ai/dsh-tool-fs'
+          - id: tool-fs-search
+            name: '@deepseek-ai/dsh-tool-fs-search'
+            config:
+              sampleOverCapGlobResults: false
+          - id: tool-bash
+            name: '@deepseek-ai/dsh-tool-bash'
+            disabled: !!js process.platform === 'win32'
+          - id: tool-pwsh
+            name: '@deepseek-ai/dsh-tool-pwsh'
+            disabled: !!js process.platform !== 'win32'
+          - id: tool-jobs
+            name: '@deepseek-ai/dsh-tool-jobs'
+
+          - id: skill-filesystem
+            name: '@deepseek-ai/dsh-skill-filesystem'
+          - id: tool-skill
+            name: '@deepseek-ai/dsh-tool-skill'
+
+          - id: tool-web
+            name: '@deepseek-ai/dsh-tool-web'
+            config:
+              fetch: true
+              searchTimeoutMs: 60000
+
+          - id: planning
+            name: cordis:group
+            group: true
+            isolate:
+              planMode: true
+            config:
+              - id: plan-mode
+                name: '@deepseek-ai/dsh-plan-mode'
+                config:
+                  section: |-
+                    You are in plan mode. Explore with non-mutating reads and searches, then present a concise, decision-complete plan for the user's approval.
+                    Do not edit files, change configuration, run generators that rewrite files, commit changes, or execute the plan while plan mode is active.
+                    Resolve facts by inspecting the repository. Ask only about choices or constraints that cannot be determined from available context.
+                    When ready, submit the plan through exit_plan_mode. Stay in plan mode until the user approves it or switches modes.
+
+          - id: compaction
+            name: cordis:group
+            group: true
+            isolate:
+              compaction: true
+              toolResultPruner: true
+            config:
+              - id: compaction-basic
+                name: '@deepseek-ai/dsh-compaction-basic'
+              - id: command-compact
+                name: '@deepseek-ai/dsh-command-compact'
+              - id: tool-result-pruner
+                name: '@deepseek-ai/dsh-compaction-tool-result-pruner'
+                config:
+                  thresholdChars: 8192
+                  headChars: 4096
+                  tailChars: 1024
+
+          - id: delegation
+            name: cordis:group
+            group: true
+            isolate:
+              workflowEngine: true
+            config:
+              - id: tool-subagent-control
+                name: '@deepseek-ai/dsh-tool-subagent-control'
+              - id: tool-subagent-list-agents
+                name: '@deepseek-ai/dsh-tool-subagent-control/list-agents'
+              - id: tool-subagent
+                name: '@deepseek-ai/dsh-tool-subagent'
+                config:
+                  provider: spawn
+                  toolName: subagent
+                  modelSelectionSettings: true
+                  backgroundMode: continuable
+              - id: tool-subagent-fork
+                name: '@deepseek-ai/dsh-tool-subagent'
+                config:
+                  provider: fork
+                  toolName: subagent_fork
+                  backgroundMode: continuable
+              - id: workflow-ptc
+                name: '@deepseek-ai/dsh-workflow-ptc'
+                config:
+                  provider: spawn
+              - id: tool-workflow
+                name: '@deepseek-ai/dsh-tool-workflow'
+
+          - id: tool-ask-user
+            name: '@deepseek-ai/dsh-tool-ask-user'
+          - id: tool-todo
+            name: '@deepseek-ai/dsh-tool-todo'
+            config:
+              allowParallelInProgress: true
+          - id: present
+            name: '@deepseek-ai/dsh-tool-present'
