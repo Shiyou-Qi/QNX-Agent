@@ -1,9 +1,9 @@
 {
   "name": "@local/reversing-team-preset",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "private": true,
   "type": "module",
-  "description": "QNX-Agent-团队协作：多代理协作调查、漏洞证据验证与综合安全风险评估。Qi-NX 版权所有。",
+  "description": "QNX-Agent-团队协作：多代理协作开展二进制、Android APK、固件逆向与安全评估。Qi-NX 版权所有。",
   "author": "Qi-NX",
   "license": "UNLICENSED",
   "dsh": { "bundle": { "patch": "./cordis.patch.yml" } }

@@ -27,6 +27,7 @@
 |---|---|
 | **Agent presets** | Binary / protocol, Firmware / UEFI, and a coordinating Team Lead |
 | **MCP server** | Local `mcp__uefi__*` tools for triage, firmware parsing, and NVRAM analysis |
+| **Analysis playbooks** | Binary/protocol, Android APK, and firmware reverse-engineering workflows |
 | **Analysis scripts** | Fifteen standalone Python utilities; JSON output supported |
 | **Install model** | One composition bundle for the complete kit, or individual bundles for development |
 | **Reporting** | Structured reverse-engineering and security assessments with evidence, severity, confidence, coverage, and limitations |
@@ -37,13 +38,14 @@ Install the complete bundle once, then select the preset that fits the task in t
 
 | Preset | Best for | Focus |
 |---|---|---|
-| **QNX-Agent-二进制逆向** (`reversing`) | Unknown binaries and protocol behavior | PE / ELF / Mach-O triage, packing leads, imports, strings, crypto, obfuscation, and protocol reversing |
+| **QNX-Agent-二进制逆向** (`reversing`) | Unknown binaries, Android apps, and protocol behavior | PE / ELF / Mach-O / APK triage, app components, DEX, native code, dependencies, packing, crypto, and protocol reversing |
 | **QNX-Agent-固件逆向** (`uefi`) | BIOS images, SPI dumps, and capsules | FV / FFS structure, NVRAM / VSS, SMM triage, boot flow, and trust anchors |
 | **QNX-Agent-团队协作** (`reversing-team`) | Multi-layer investigations | Coordinates binary and firmware work, delegates scoped threads, and synthesizes findings |
 
 Each preset loads its matching playbook:
 
 - [Binary and protocol reverse-engineering playbook](.dsh/skills/reverse-engineering/SKILL.md)
+- [Android APK reverse-engineering and security playbook](.dsh/skills/android-apk-security/SKILL.md)
 - [Firmware and UEFI playbook](.dsh/skills/firmware-uefi/SKILL.md)
 
 ## 预设模式与使用方法
@@ -52,11 +54,11 @@ Each preset loads its matching playbook:
 
 | 预设 | 模式说明 | 如何使用 |
 |---|---|---|
-| **QNX-Agent-二进制逆向**（`reversing`） | 通用二进制与协议静态逆向，适合 PE / ELF / Mach-O、未知文件、壳层、加密与协议行为分析。 | 选择该预设，提供文件路径和具体问题，例如“确认文件类型、架构和可能的打包方式”，再按结果继续分析。 |
+| **QNX-Agent-二进制逆向**（`reversing`） | 通用二进制、Android APK 与协议逆向，适合 PE / ELF / Mach-O / APK、应用组件、DEX/native、依赖漏洞与安全配置分析。 | 选择该预设，提供 APK 或 split 文件路径及分析目标；先识别哈希、包名、版本和签名，再按授权范围做静态分析，动态测试需指定隔离模拟器。 |
 | **QNX-Agent-固件逆向**（`uefi`） | 固件专用分析，适合 SPI / BIOS 镜像、UEFI Capsule、EC 与嵌入式 SoC，重点覆盖 FV / FFS、NVRAM、SMM 和启动链。 | 选择该预设，提供固件文件、设备型号或平台信息；先识别镜像与区域，再指定关注的驱动、变量或启动阶段。 |
 | **QNX-Agent-团队协作**（`reversing-team`） | 多代理协作，适合同时涉及二进制、协议和固件，或需要并行调查多个独立问题的任务。 | 选择该预设，说明总目标、样本路径、优先级和操作限制；协调代理拆分独立子任务，再汇总并核对证据。 |
 
-三个模式都支持直接用自然语言提问。提交样本时请明确路径；若只想做静态分析，也请在请求中注明。团队协调模式会在任务确实可拆分时再分派工作。
+三个模式都支持直接用自然语言提问。提交样本时请明确路径；若只想做静态分析，也请在请求中注明。团队协调模式会在任务确实可拆分时再分派工作。Android APK 分析默认先做静态检查；动态分析只在获授权的隔离模拟器中进行。
 
 ## What makes the workflow useful
 
@@ -103,6 +105,12 @@ Scanner hits remain candidates until affected versions, reachability/configurati
 | [`dynamic_evidence.py`](.dsh/skills/reverse-engineering/scripts/dynamic_evidence.py) | Normalize existing CAPE/Cuckoo, Sysmon, and Procmon telemetry exports |
 | [`vulnerability_scan.py`](.dsh/skills/reverse-engineering/scripts/vulnerability_scan.py) | Run installed OSV-Scanner, Trivy, or Semgrep against a local target and normalize results |
 | [`security_assessment.py`](.dsh/skills/reverse-engineering/scripts/security_assessment.py) | Convert scanner JSON/SARIF into a bounded finding/evidence ledger and risk summary |
+
+### Android APK reverse engineering and mobile security
+
+The [Android APK playbook](.dsh/skills/android-apk-security/SKILL.md) guides the Agent through APK/APKS/XAPK/AAB identification, split and signing inventory, manifest and permission review, exported components and deep links, WebView and network configuration, data storage, dependencies, DEX/Smali, and JNI/native libraries. It defines when to use Android SDK tools, `apksigner`, apktool, JADX, MobSF, ADB, an isolated emulator, Frida, and the existing vulnerability-assessment tools.
+
+The playbook distinguishes static leads from verified vulnerabilities, requires exact component/version and reachability evidence for CVE claims, and records device/API-level limits. Dynamic analysis is scoped to authorized targets and disposable test environments. Use the [Android APK security report template](templates/android-apk-security-report.md) for a complete assessment.
 
 The MCP server also provides availability checks, binary triage, signature scans, firmware parsing, extraction, vulnerability scanning, and offline security assessment. Optional [`osv-scanner`](https://google.github.io/osv-scanner/installation/), [Trivy](https://www.trivy.dev/docs/latest/getting-started/), and [Semgrep](https://docs.semgrep.dev/getting-started/quickstart) executables must be installed separately. Scans can contact advisory databases or rule registries, depending on scanner configuration; review data-handling requirements for confidential code. Raw saved scanner reports may contain sensitive matches. See the [MCP server guide](dsh-uefi-mcp/README.md) for the complete tool list and manifest format.
 
@@ -162,6 +170,10 @@ Core firmware parsers `walk_fv`, `extract_vss`, `vss_parse`, `list_smi`, and `ch
 | **UEFIExtract** | Extract compressed or GUID-defined sections | Available from [LongSoft / UEFITool](https://github.com/LongSoft/UEFITool); add `UEFIExtract` to `PATH` |
 | **CHIPSEC** | Live platform security checks and logs | Run checks on the target system; `chipsec_abstract` only parses logs and does not require CHIPSEC |
 | **Ghidra** | Function and callsite evidence | Install Ghidra and expose `analyzeHeadless` on `PATH`, set `GHIDRA_HOME`, or set `GHIDRA_ANALYZE_HEADLESS`; analysis is static |
+| **Android SDK (`apkanalyzer`, `aapt2`, `apksigner`)** | APK metadata, manifest, permissions, and signing certificate verification | Install Android SDK command-line tools and confirm the executable paths |
+| **JADX / apktool** | DEX-to-source view; resource, Manifest, and Smali decoding | Decompilation can be incomplete; verify important paths against Smali/DEX |
+| **MobSF** | Mobile application static analysis and optional dynamic analysis | Keep sensitive APKs in a locally controlled deployment; dynamic analysis requires a configured emulator |
+| **ADB / Android Emulator / Frida** | Authorized runtime and instrumentation evidence | Use a disposable emulator, snapshot it, and use synthetic test data |
 | **CAPE / Cuckoo, Sysmon, Procmon** | Runtime behavior telemetry | Run samples only in an isolated disposable sandbox/VM, export logs, then use `dynamic_evidence` to normalize them offline |
 
 The built-in binwalk fallback recognizes 23 signatures, including firmware volumes, flash descriptors, common compression formats, Android boot images, FIT / DTB, PE / ELF, and selected firmware compression GUIDs. Results identify which scanner produced them.
@@ -185,7 +197,7 @@ The suite compiles scripts, checks their help output, validates parsers against 
 ├── dsh-uefi-preset/                Firmware / UEFI preset
 ├── dsh-reversing-team-preset/      Coordinating Team Lead preset
 ├── dsh-uefi-mcp/                   Local MCP server and bundle
-├── .dsh/skills/                    Playbooks and Python utilities
+├── .dsh/skills/                    Binary, Android APK, and firmware playbooks/utilities
 └── tests/                          Fixtures and verification suite
 ```
 
