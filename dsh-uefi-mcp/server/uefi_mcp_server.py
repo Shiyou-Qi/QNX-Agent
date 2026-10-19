@@ -48,6 +48,7 @@ def _workspace_root() -> Path:
 DEFAULT_SCRIPT_DIRS = {
     "fw_scripts": Path(".dsh") / "skills" / "firmware-uefi" / "scripts",
     "re_scripts": Path(".dsh") / "skills" / "reverse-engineering" / "scripts",
+    "android_scripts": Path(".dsh") / "engines" / "android-apk",
 }
 
 # Optional override file beside the bundle. Not required, and not shipped with
@@ -59,7 +60,7 @@ _PATHS_FILE = "_paths.local.json"
 def _resolve_script_dirs() -> dict[str, Path]:
     """Resolve the Qi-NX script directories.
 
-    Precedence: `QINX_FW_SCRIPTS` / `QINX_RE_SCRIPTS` environment variables, then
+    Precedence: `QINX_*_SCRIPTS` environment variables, then
     an optional `_paths.local.json` beside the bundle, then the self-located
     default under the workspace that contains this bundle.
     """
@@ -75,7 +76,8 @@ def _resolve_script_dirs() -> dict[str, Path]:
 
     resolved: dict[str, Path] = {}
     for key, env in (("fw_scripts", "QINX_FW_SCRIPTS"),
-                     ("re_scripts", "QINX_RE_SCRIPTS")):
+                     ("re_scripts", "QINX_RE_SCRIPTS"),
+                     ("android_scripts", "QINX_ANDROID_SCRIPTS")):
         raw = os.environ.get(env) or cfg.get(key)
         resolved[key] = Path(raw) if raw else (workspace / DEFAULT_SCRIPT_DIRS[key])
     return resolved
@@ -142,6 +144,12 @@ try:
 except Exception as exc:  # noqa: BLE001
     vulnerability_scan = None
     print(f"qinx-uefi-mcp: vulnerability_scan unavailable: {exc}", file=sys.stderr)
+
+try:
+    import android_apk_analyze  # noqa: E402
+except Exception as exc:  # noqa: BLE001
+    android_apk_analyze = None
+    print(f"qinx-uefi-mcp: android_apk_analyze unavailable: {exc}", file=sys.stderr)
 
 
 # --------------------------------------------------------------------------- #
@@ -268,10 +276,14 @@ except ImportError:
 
 server = MCPServer(
     name="qinx-uefi",
-    version="1.0.3",
+    version="1.0.4",
     instructions=(
-        "Qi-NX firmware / UEFI reverse-engineering toolkit. " + BANNER + ".\n"
+        "Qi-NX reverse-engineering toolkit for firmware and Android packages. " + BANNER + ".\n"
         "Choose tools from observed evidence: start with tool_status and "
+        "android_apk_analyze for APK/APKS/XAPK/AAB static inventory and manifest "
+        "candidates; this tool never installs or executes app code, and findings "
+        "require manual validation. Use focused external JADX/apktool/Ghidra analysis "
+        "for code paths. "
         "binwalk_scan; use walk_fv when firmware-volume signatures or a BIOS "
         "region are present; use extract_vss/parse_vss when NVRAM is relevant; "
         "use list_smi for MM/SMM leads. If compressed sections appear, decompress "
@@ -330,6 +342,7 @@ async def tool_status() -> str:
                 "dynamic_evidence": "available" if dynamic_evidence else "unavailable",
                 "security_assessment": "available" if security_assessment else "unavailable",
                 "vulnerability_scan": "available" if vulnerability_scan else "unavailable",
+                "android_apk_analyze": "available" if android_apk_analyze else "unavailable",
             },
             "python_modules": {
                 "lief": mod("lief"),
@@ -346,6 +359,13 @@ async def tool_status() -> str:
                 "trivy": _which("trivy") or "absent",
                 "osv-scanner": _which("osv-scanner") or "absent",
                 "semgrep": _which("semgrep") or "absent",
+                "apkanalyzer": _which("apkanalyzer") or _which("apkanalyzer.bat") or "absent",
+                "aapt2": _which("aapt2") or _which("aapt2.exe") or "absent",
+                "apksigner": _which("apksigner") or _which("apksigner.bat") or "absent",
+                "apktool": _which("apktool") or _which("apktool.bat") or "absent",
+                "jadx": _which("jadx") or _which("jadx.bat") or "absent",
+                "adb": _which("adb") or _which("adb.exe") or "absent",
+                "frida": _which("frida") or "absent",
             },
             "fallbacks": {
                 "binwalk_scan": "falls back to the internal signature scan",
@@ -656,6 +676,21 @@ async def dynamic_evidence_(source: str, sample_sha256: str | None = None) -> st
 
     def run() -> dict:
         return dynamic_evidence.normalize(source, sample_sha256)
+
+    return _dumps(await _in_thread(run))
+
+
+@server.tool(name="android_apk_analyze", description="Run Qi-NX's read-only Android package analyzer on an APK/APKS/XAPK/APKM/AAB. Computes SHA-256, inventories ZIP members and split/native/DEX content, checks unsafe archive paths and compression ratios, decodes the manifest with available Android SDK tools, audits common manifest exposure settings, and verifies signer details with apksigner when installed. It does not extract, install, or execute the app. Findings are static candidates, not confirmed vulnerabilities; dynamic, DEX, native, dependency, and backend analysis require separate follow-up.")
+async def android_apk_analyze_(target: str, max_entries: int = 2000) -> str:
+    if android_apk_analyze is None:
+        return _dumps({"error": "android_apk_analyze module unavailable"})
+
+    def run() -> dict:
+        try:
+            return android_apk_analyze.analyze(target, max_entries=max_entries)
+        except Exception as exc:  # noqa: BLE001
+            return {"error": f"APK analysis failed: {exc.__class__.__name__}",
+                    "target": target}
 
     return _dumps(await _in_thread(run))
 

@@ -31,6 +31,7 @@ All tools are published under the `uefi` server name, so the model sees
 | `dynamic_evidence` | `source`, `sample_sha256?` | normalize exported CAPE/Cuckoo JSON, Sysmon JSONL, or Procmon CSV into an event timeline and candidate IOCs; offline parsing only |
 | `vulnerability_scan` | `target`, `scanner`, `timeout_seconds?`, `output_file?` | run installed OSV-Scanner (`osv`), Trivy (`trivy`), or Semgrep (`semgrep`) on a local path; target is not launched |
 | `security_assessment` | `report`, `target?`, `target_sha256?`, `scanner?` | offline parse of Trivy/OSV/Semgrep JSON or SARIF into stable finding/evidence IDs and severity summary |
+| `android_apk_analyze` | `target`, `max_entries?` | Qi-NX APK first-pass engine: SHA-256, ZIP/split/DEX/native inventory, Android SDK manifest decoding, common manifest exposure leads, bounded DEX string clues, and signer verification when `apksigner` is available; never extracts, installs, or executes the app |
 
 Broken or missing prerequisites never produce a fake success: tools return
 `{"error": "..."}` plus a `hint` or `fallback` field naming the working
@@ -53,7 +54,17 @@ vulnerability_scan ./project scanner=osv
 vulnerability_scan ./project scanner=trivy
 vulnerability_scan ./project scanner=semgrep
 security_assessment ./scan-results.json scanner=trivy
+android_apk_analyze ./app.apk
 ```
+
+The Android engine is also available directly as
+`python .dsh/engines/android-apk/android_apk_analyze.py <apk>`. It uses the
+Python standard library and calls `apkanalyzer` or `aapt2` for compiled Manifest
+decoding and `apksigner` for signature verification when those tools are on
+`PATH`. It statically inspects bounded DEX string pools but does not decompile
+DEX control flow. Manifest and string matches are leads: continue with JADX,
+apktool, Ghidra/MobSF, dependency matching, and authorized emulator analysis as
+the evidence requires. It never executes app code or writes extracted members.
 
 The vulnerability scanners are optional external executables and must be on
 `PATH`. Scans pass the local target as an argument and do not execute it. OSV,
@@ -176,7 +187,7 @@ uninstall this bundle. **Do not do both**: two `mcp-client` rows sharing
 
 `server/uefi_mcp_server.py` resolves the Qi-NX skill script trees from, in order:
 
-1. the `QINX_FW_SCRIPTS` / `QINX_RE_SCRIPTS` environment variables
+1. the `QINX_FW_SCRIPTS`, `QINX_RE_SCRIPTS`, or `QINX_ANDROID_SCRIPTS` environment variables
 2. an optional `_paths.local.json` beside the bundle (git-ignored; not shipped)
 3. **the workspace that contains the bundle**, derived from the server's own path
    — the server sits at `<workspace>/dsh-uefi-mcp/server/uefi_mcp_server.py`, so

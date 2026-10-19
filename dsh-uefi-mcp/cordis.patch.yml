@@ -7,9 +7,10 @@
 #   tool_status, walk_fv, extract_vss, parse_vss, list_smi,
 #   uefi_firmware_parse, binwalk_scan, uefitool_extract,
 #   lief_info, yara_scan, pack_detect, ghidra_evidence, yara_backtest,
-#   firmware_diff, dynamic_evidence, vulnerability_scan, security_assessment
+#   firmware_diff, dynamic_evidence, vulnerability_scan, security_assessment,
+#   android_apk_analyze
 #
-# The server is `server/uefi_mcp_server.py`. It locates the Qi-NX skill scripts
+# The server is `server/uefi_mcp_server.py`. It locates the Qi-NX scripts
 # from its own path, so this row needs no machine-specific absolute paths.
 #
 # Two things may still need pointing at your machine:

@@ -28,7 +28,7 @@
 | **Agent presets** | Binary / protocol, Android APK, Firmware / UEFI, and a coordinating Team Lead |
 | **MCP server** | Local `mcp__uefi__*` tools for triage, firmware parsing, and NVRAM analysis |
 | **Analysis playbooks** | Binary/protocol, Android APK, and firmware reverse-engineering workflows |
-| **Analysis scripts** | Fifteen standalone Python utilities; JSON output supported |
+| **Analysis scripts** | Android APK engine plus fifteen binary/firmware Python utilities; JSON output supported |
 | **Install model** | One composition bundle for the complete kit, or individual bundles for development |
 | **Reporting** | Structured reverse-engineering and security assessments with evidence, severity, confidence, coverage, and limitations |
 
@@ -46,7 +46,6 @@ Install the complete bundle once, then select the preset that fits the task in t
 Each preset loads its matching playbook:
 
 - [Binary and protocol reverse-engineering playbook](.dsh/skills/reverse-engineering/SKILL.md)
-- [Android APK reverse-engineering and security playbook](.dsh/skills/android-apk-security/SKILL.md)
 - [Firmware and UEFI playbook](.dsh/skills/firmware-uefi/SKILL.md)
 
 ## 预设模式与使用方法
@@ -110,9 +109,9 @@ Scanner hits remain candidates until affected versions, reachability/configurati
 
 ### Android APK reverse engineering and mobile security
 
-The [Android APK playbook](.dsh/skills/android-apk-security/SKILL.md) guides the Agent through APK/APKS/XAPK/AAB identification, split and signing inventory, manifest and permission review, exported components and deep links, WebView and network configuration, data storage, dependencies, DEX/Smali, and JNI/native libraries. It defines when to use Android SDK tools, `apksigner`, apktool, JADX, MobSF, ADB, an isolated emulator, Frida, and the existing vulnerability-assessment tools.
+The dedicated preset calls the built-in [`android_apk_analyze.py`](.dsh/engines/android-apk/android_apk_analyze.py) engine through `mcp__uefi__android_apk_analyze`. It hashes and inventories APK containers and split/native/DEX members, decodes binary Manifest XML through `apkanalyzer` or `aapt2` when installed, reports signing verification through `apksigner`, checks common exported-component and security-configuration conditions, and extracts bounded DEX string clues. It never installs or executes the app.
 
-The playbook distinguishes static leads from verified vulnerabilities, requires exact component/version and reachability evidence for CVE claims, and records device/API-level limits. Dynamic analysis is scoped to authorized targets and disposable test environments. Use the [Android APK security report template](templates/android-apk-security-report.md) for a complete assessment.
+This first-pass engine creates actionable leads; it does not replace JADX/MobSF/native-code review, dependency reachability analysis, backend testing, or an authorized emulator session. Findings require manual validation against the app's code paths and target Android versions. Dynamic analysis is scoped to authorized targets and disposable test environments. Use the [Android APK security report template](templates/android-apk-security-report.md) for a complete assessment.
 
 The MCP server also provides availability checks, binary triage, signature scans, firmware parsing, extraction, vulnerability scanning, and offline security assessment. Optional [`osv-scanner`](https://google.github.io/osv-scanner/installation/), [Trivy](https://www.trivy.dev/docs/latest/getting-started/), and [Semgrep](https://docs.semgrep.dev/getting-started/quickstart) executables must be installed separately. Scans can contact advisory databases or rule registries, depending on scanner configuration; review data-handling requirements for confidential code. Raw saved scanner reports may contain sensitive matches. See the [MCP server guide](dsh-uefi-mcp/README.md) for the complete tool list and manifest format.
 
@@ -200,7 +199,8 @@ The suite compiles scripts, checks their help output, validates parsers against 
 ├── dsh-uefi-preset/                Firmware / UEFI preset
 ├── dsh-reversing-team-preset/      Coordinating Team Lead preset
 ├── dsh-uefi-mcp/                   Local MCP server and bundle
-├── .dsh/skills/                    Binary, Android APK, and firmware playbooks/utilities
+├── .dsh/engines/android-apk/       Built-in Android APK static-analysis engine
+├── .dsh/skills/                    Binary and firmware playbooks/utilities
 └── tests/                          Fixtures and verification suite
 ```
 

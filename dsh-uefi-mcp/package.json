@@ -1,9 +1,9 @@
 {
   "name": "@local/uefi-mcp",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "private": true,
   "type": "module",
-  "description": "QNX-Agent reverse-engineering MCP server bundle — UEFI, Ghidra evidence, YARA backtesting, firmware diff, and sandbox-telemetry tools exposed as mcp__uefi__*. Copyright Qi-NX.",
+  "description": "QNX-Agent MCP server bundle — Android APK static analysis, UEFI, Ghidra evidence, YARA backtesting, firmware diff, and telemetry tools exposed as mcp__uefi__*. Copyright Qi-NX.",
   "author": "Qi-NX",
   "license": "UNLICENSED",
   "dsh": { "bundle": { "patch": "./cordis.patch.yml" } }
