@@ -1,6 +1,6 @@
 {
   "name": "@local/dsh-uefi-preset",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "private": true,
   "type": "module",
   "description": "Qi-NX-Agent（固件 / UEFI）：面向 SPI、UEFI Capsule、EC 与嵌入式固件逆向分析的 DSH Agent 预设。Qi-NX 版权所有。",

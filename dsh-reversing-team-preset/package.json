@@ -1,6 +1,6 @@
 {
   "name": "@local/reversing-team-preset",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "type": "module",
   "description": "Qi-NX-Agent（团队协调）：整合二进制与固件 / UEFI 逆向分析能力，支持多代理协作的 DSH Agent 预设。Qi-NX 版权所有。",

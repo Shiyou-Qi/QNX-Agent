@@ -1,6 +1,6 @@
 {
   "name": "@local/dsh-reversing-preset",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "private": true,
   "type": "module",
   "description": "Qi-NX-Agent：面向二进制、固件与协议逆向分析的 DSH Agent 预设。Qi-NX 版权所有。",
