@@ -22,7 +22,7 @@
       name: '@deepseek-ai/dsh-agent-preset'
       config:
         id: reversing-team
-        name: QNX-Agent（团队协调）
+        name: QNX-Agent-团队协作
         description: >-
           多代理协作模式，适合同时涉及二进制、协议与固件的复杂调查。用法：选择此预设，提供样本路径、目标与限制；它会拆分独立分析任务并汇总证据和结论。Qi-NX 版权所有。
         order: 7

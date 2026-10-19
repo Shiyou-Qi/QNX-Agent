@@ -37,9 +37,9 @@ Install the complete bundle once, then select the preset that fits the task in t
 
 | Preset | Best for | Focus |
 |---|---|---|
-| **QNX-Agent** (`reversing`) | Unknown binaries and protocol behavior | PE / ELF / Mach-O triage, packing leads, imports, strings, crypto, obfuscation, and protocol reversing |
-| **QNX-Agent（固件 / UEFI）** (`uefi`) | BIOS images, SPI dumps, and capsules | FV / FFS structure, NVRAM / VSS, SMM triage, boot flow, and trust anchors |
-| **QNX-Agent（团队协调）** (`reversing-team`) | Multi-layer investigations | Coordinates binary and firmware work, delegates scoped threads, and synthesizes findings |
+| **QNX-Agent-二进制逆向** (`reversing`) | Unknown binaries and protocol behavior | PE / ELF / Mach-O triage, packing leads, imports, strings, crypto, obfuscation, and protocol reversing |
+| **QNX-Agent-固件逆向** (`uefi`) | BIOS images, SPI dumps, and capsules | FV / FFS structure, NVRAM / VSS, SMM triage, boot flow, and trust anchors |
+| **QNX-Agent-团队协作** (`reversing-team`) | Multi-layer investigations | Coordinates binary and firmware work, delegates scoped threads, and synthesizes findings |
 
 Each preset loads its matching playbook:
 
@@ -52,9 +52,9 @@ Each preset loads its matching playbook:
 
 | 预设 | 模式说明 | 如何使用 |
 |---|---|---|
-| **QNX-Agent**（`reversing`） | 通用二进制与协议静态逆向，适合 PE / ELF / Mach-O、未知文件、壳层、加密与协议行为分析。 | 选择该预设，提供文件路径和具体问题，例如“确认文件类型、架构和可能的打包方式”，再按结果继续分析。 |
-| **QNX-Agent（固件 / UEFI）**（`uefi`） | 固件专用分析，适合 SPI / BIOS 镜像、UEFI Capsule、EC 与嵌入式 SoC，重点覆盖 FV / FFS、NVRAM、SMM 和启动链。 | 选择该预设，提供固件文件、设备型号或平台信息；先识别镜像与区域，再指定关注的驱动、变量或启动阶段。 |
-| **QNX-Agent（团队协调）**（`reversing-team`） | 多代理协作，适合同时涉及二进制、协议和固件，或需要并行调查多个独立问题的任务。 | 选择该预设，说明总目标、样本路径、优先级和操作限制；协调代理拆分独立子任务，再汇总并核对证据。 |
+| **QNX-Agent-二进制逆向**（`reversing`） | 通用二进制与协议静态逆向，适合 PE / ELF / Mach-O、未知文件、壳层、加密与协议行为分析。 | 选择该预设，提供文件路径和具体问题，例如“确认文件类型、架构和可能的打包方式”，再按结果继续分析。 |
+| **QNX-Agent-固件逆向**（`uefi`） | 固件专用分析，适合 SPI / BIOS 镜像、UEFI Capsule、EC 与嵌入式 SoC，重点覆盖 FV / FFS、NVRAM、SMM 和启动链。 | 选择该预设，提供固件文件、设备型号或平台信息；先识别镜像与区域，再指定关注的驱动、变量或启动阶段。 |
+| **QNX-Agent-团队协作**（`reversing-team`） | 多代理协作，适合同时涉及二进制、协议和固件，或需要并行调查多个独立问题的任务。 | 选择该预设，说明总目标、样本路径、优先级和操作限制；协调代理拆分独立子任务，再汇总并核对证据。 |
 
 三个模式都支持直接用自然语言提问。提交样本时请明确路径；若只想做静态分析，也请在请求中注明。团队协调模式会在任务确实可拆分时再分派工作。
 

@@ -1,6 +1,6 @@
 {
   "name": "qi-nx-agent",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "private": true,
   "type": "module",
   "description": "QNX-Agent — reverse-engineering agents for DeepSeek Harness: three Agent presets, a local MCP server, and a Python toolkit for binaries and firmware. Copyright Qi-NX.",

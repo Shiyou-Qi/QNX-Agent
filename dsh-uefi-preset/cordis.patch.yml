@@ -11,7 +11,7 @@
       name: '@deepseek-ai/dsh-agent-preset'
       config:
         id: uefi
-        name: QNX-Agent（固件 / UEFI）
+        name: QNX-Agent-固件逆向
         description: >-
           固件 / UEFI 分析模式，适合 SPI Flash、BIOS 镜像、UEFI Capsule、EC 与嵌入式 SoC。用法：选择此预设，提供固件文件及已知平台信息，从镜像识别开始，再分析 FV/FFS、NVRAM 与 SMM。Qi-NX 版权所有。
         order: 6

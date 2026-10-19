@@ -12,7 +12,7 @@
       name: '@deepseek-ai/dsh-agent-preset'
       config:
         id: reversing
-        name: QNX-Agent
+        name: QNX-Agent-二进制逆向
         description: >-
           通用二进制 / 协议逆向模式，适合 PE、ELF、Mach-O 与可疑文件。用法：选择此预设，提供样本路径和问题，从类型、架构与壳层初筛开始，再按证据深入。含 YARA、LIEF 等工具。Qi-NX 版权所有。
         order: 5
