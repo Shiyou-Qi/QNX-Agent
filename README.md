@@ -27,9 +27,9 @@
 |---|---|
 | **Agent presets** | Binary / protocol, Firmware / UEFI, and a coordinating Team Lead |
 | **MCP server** | Local `mcp__uefi__*` tools for triage, firmware parsing, and NVRAM analysis |
-| **Analysis scripts** | Thirteen standalone Python utilities; JSON output supported |
+| **Analysis scripts** | Fifteen standalone Python utilities; JSON output supported |
 | **Install model** | One composition bundle for the complete kit, or individual bundles for development |
-| **Reporting** | Structured reports with artifact identity, evidence, confidence, limitations, and a signed footer |
+| **Reporting** | Structured reverse-engineering and security assessments with evidence, severity, confidence, coverage, and limitations |
 
 ## Choose your specialist
 
@@ -80,6 +80,12 @@ The [UEFI MCP server](dsh-uefi-mcp/) exposes the toolkit as local `mcp__uefi__*`
 
 ## Toolkit
 
+### Vulnerability scanning and security assessment
+
+QNX-Agent can run installed **OSV-Scanner** for dependency advisories, **Trivy** for dependencies/misconfigurations/secrets, and **Semgrep** for source-code rules. It normalizes Trivy, OSV-Scanner, Semgrep JSON, and SARIF into findings with stable IDs, severity counts, references, and evidence locations. For firmware, it guides image-specific review of Secure Boot, capsule verification/rollback, SPI write protection, SMM input validation, and trust anchors; CHIPSEC results must come from the identified target platform and be corroborated against matching firmware evidence.
+
+Scanner hits remain candidates until affected versions, reachability/configuration, vendor backports, and exploit preconditions are validated. Reports distinguish confirmed issues from unverified leads and state scan coverage and limitations. External scanners may update vulnerability databases or fetch remote rules; the offline assessment parser does not access the network. See the [reverse-engineering playbook](.dsh/skills/reverse-engineering/SKILL.md) and [MCP tool guide](dsh-uefi-mcp/README.md).
+
 | Tool | What it does |
 |---|---|
 | [`walk_fv.py`](.dsh/skills/firmware-uefi/scripts/walk_fv.py) | Walk firmware volumes, FFS files, and sections; optionally extract PE32 / TE sections |
@@ -95,8 +101,10 @@ The [UEFI MCP server](dsh-uefi-mcp/) exposes the toolkit as local `mcp__uefi__*`
 | [`yara_backtest.py`](.dsh/skills/reverse-engineering/scripts/yara_backtest.py) | Compile and backtest YARA rules against explicitly labeled corpus samples |
 | [`ghidra_evidence.py`](.dsh/skills/reverse-engineering/scripts/ghidra_evidence.py) | Export Ghidra functions and callsites linked to addresses and image offsets |
 | [`dynamic_evidence.py`](.dsh/skills/reverse-engineering/scripts/dynamic_evidence.py) | Normalize existing CAPE/Cuckoo, Sysmon, and Procmon telemetry exports |
+| [`vulnerability_scan.py`](.dsh/skills/reverse-engineering/scripts/vulnerability_scan.py) | Run installed OSV-Scanner, Trivy, or Semgrep against a local target and normalize results |
+| [`security_assessment.py`](.dsh/skills/reverse-engineering/scripts/security_assessment.py) | Convert scanner JSON/SARIF into a bounded finding/evidence ledger and risk summary |
 
-The MCP server also provides availability checks, binary triage, signature scans, firmware parsing, and extraction helpers. The optional `ghidra_evidence` tool requires Ghidra `analyzeHeadless` on `PATH` (or `GHIDRA_ANALYZE_HEADLESS`); it performs static analysis only. The `yara_backtest` tool scans a bounded sample corpus and computes quality metrics only for explicitly labeled sample/rule pairs. The `dynamic_evidence` tool reads existing sandbox/host telemetry exports without executing samples. See the [MCP server guide](dsh-uefi-mcp/README.md) for the complete tool list and manifest format.
+The MCP server also provides availability checks, binary triage, signature scans, firmware parsing, extraction, vulnerability scanning, and offline security assessment. Optional [`osv-scanner`](https://google.github.io/osv-scanner/installation/), [Trivy](https://www.trivy.dev/docs/latest/getting-started/), and [Semgrep](https://docs.semgrep.dev/getting-started/quickstart) executables must be installed separately. Scans can contact advisory databases or rule registries, depending on scanner configuration; review data-handling requirements for confidential code. Raw saved scanner reports may contain sensitive matches. See the [MCP server guide](dsh-uefi-mcp/README.md) for the complete tool list and manifest format.
 
 ## Install
 

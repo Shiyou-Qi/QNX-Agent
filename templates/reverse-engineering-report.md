@@ -33,11 +33,19 @@
 
 [Container, architecture, entry point, sections, imports, packing/compression signals, and other checks performed.]
 
-## 5. Findings
+## 5. Security assessment summary (when in scope)
 
-| Finding | Severity | Confidence | Summary | Evidence IDs |
+| Scope / target | Scanner and version | Advisory/rule freshness | Coverage | Result |
 |---|---|---|---|---|
-| F-001 | [Critical/High/Medium/Low/Informational] | [High/Medium/Low] | [claim] | E-001, E-002 |
+| [path, artifact, platform] | [tools actually run] | [database/rule date or unavailable] | [included/excluded components] | [finding counts by severity] |
+
+State whether results came from dependency, source, firmware-image, extracted-filesystem, or live-platform checks. Explain whether scanner findings were manually validated. A no-findings result is not a security certification.
+
+## 6. Findings
+
+| Finding | Type / CVE / rule | Severity | Confidence / status | Summary | Evidence IDs |
+|---|---|---|---|---|---|
+| F-001 | [vulnerability / CVE / rule] | [Critical/High/Medium/Low/Informational] | [confidence; confirmed / likely / unverified] | [claim] | E-001, E-002 |
 
 ### F-001 — [finding title]
 
@@ -45,34 +53,37 @@
 - **Interpretation:** [what the observation supports]
 - **Alternative explanations:** [credible alternatives]
 - **Impact:** [impact or Not confirmed]
+- **Affected component / version range:** [package, firmware component, affected range, fixed version, or Not available]
+- **Attack prerequisites / reachability:** [evidence-backed preconditions or Not confirmed]
+- **Remediation / residual risk:** [fix, mitigation, and remaining exposure]
 - **Confidence:** [rating and why]
 - **Further evidence needed:** [what would raise confidence]
 
-## 6. Capabilities and behavior
+## 7. Capabilities and behavior
 
 | Capability | Behavior observed | Evidence IDs | Confidence |
 |---|---|---|---|
 | [capability] | [observed behavior] | [IDs] | [rating] |
 
-## 7. Indicators of compromise
+## 8. Indicators of compromise
 
 | Type | Value | Source / offset | Context | Confidence |
 |---|---|---|---|---|
 | [hash/domain/path/etc.] | [value] | [evidence ID and location] | [context] | [rating] |
 
-## 8. ATT&CK mapping (when applicable)
+## 9. ATT&CK mapping (when applicable)
 
 | Technique | Name | Evidence IDs | Confidence / caveat |
 |---|---|---|---|
 | [ID] | [name] | [IDs] | [rating] |
 
-## 9. Detection and mitigation recommendations
+## 10. Detection and mitigation recommendations
 
 | Priority | Recommendation | Rationale / evidence | Validation |
 |---|---|---|---|
 | [P1] | [action] | [IDs] | [how to verify] |
 
-## 10. Limitations and unanswered questions
+## 11. Limitations and unanswered questions
 
 - [Checks not run, inaccessible layers, unsupported formats, missing symbols, or unresolved questions.]
 

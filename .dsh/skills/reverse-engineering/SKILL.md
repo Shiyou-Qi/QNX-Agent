@@ -21,6 +21,8 @@ as `mcp__uefi__*` tools. Prefer them; they return structured JSON.
 | `mcp__uefi__binwalk_scan` | internal signatures | magic + compression offsets for container triage |
 | `mcp__uefi__ghidra_evidence` | `ghidra_evidence.py` | Ghidra headless function inventory and address-linked call references (static only) |
 | `mcp__uefi__yara_backtest` | `yara_backtest.py` | compile rules and measure them against a sample corpus using explicit per-rule labels |
+| `mcp__uefi__vulnerability_scan` | `vulnerability_scan.py` | run installed OSV-Scanner, Trivy, or Semgrep on a local path and normalize scanner output |
+| `mcp__uefi__security_assessment` | `security_assessment.py` | offline normalization of scanner JSON/SARIF into a finding and evidence ledger |
 | `mcp__uefi__walk_fv`, `extract_vss`, `parse_vss`, `list_smi` | firmware scripts | firmware / UEFI work (see the `firmware-uefi` skill) |
 
 Script fallback, when MCP is unavailable:
@@ -32,6 +34,13 @@ Install the optional heavy dependencies once per host:
 ```
 python -m pip install lief yara-python
 ```
+
+Optional external scanners must be installed separately and available on `PATH`:
+`osv-scanner` for dependency advisories, `trivy` for dependency/misconfiguration/
+secret scans, and `semgrep` for source-code rules. The scanner wrapper passes a
+local path as an argument and never launches the target. Depending on scanner
+configuration, a scan may contact public vulnerability databases or remote rule
+registries. `security_assessment.py` is offline and parses saved JSON/SARIF.
 
 The YARA built-in ruleset deduplicates overlapping matches, so one `192.168.10.44`
 yields one hit rather than one per start offset.
@@ -202,6 +211,32 @@ All scripts and the MCP server print `by QNX-Agent (Copyright Qi-NX)`.
   protocol behavior.
 - Stop when the requested question is answered with reproducible evidence; do
   not run every tool just because it is available.
+
+## 7.2 Vulnerability scanning and security assessment
+
+1. Define whether the scope is a source tree, dependency manifests, extracted
+   filesystem, executable, or firmware image. Record the artifact/source revision
+   and do not imply that a partial path represents the whole product.
+2. Check `tool_status`, then choose `vulnerability_scan(scanner="osv")` for
+   dependency advisories, `scanner="trivy"` for dependencies/misconfigurations/
+   secrets, or `scanner="semgrep"` for source-code rules. Scanners may update
+   databases or fetch remote rules; record the scanner version and scan time.
+   The target is inspected, never launched.
+3. Use `security_assessment` on saved Trivy, OSV-Scanner, Semgrep JSON, or SARIF
+   to create stable finding/evidence IDs and severity counts. Secret values are
+   redacted from normalized results.
+4. Validate each material hit: exact component/version and affected range, fixed
+   version, code reachability, configuration, exploit prerequisites, vendor
+   backports, and compensating controls. Preserve advisory/rule ID, reference,
+   file/line/offset, scanner/database version, confidence, and validation state.
+   For compiled binaries without source, scanner coverage is limited; use Ghidra
+   to trace externally controlled input through bounds checks, integer arithmetic,
+   memory operations, authentication, and signature/crypto validation. A risky
+   import or suspicious string alone is not a vulnerability.
+5. Separate confirmed vulnerabilities from likely issues, scanner-only leads,
+   and untested areas. Explain impact, exposure, severity rationale, fixes, and
+   residual risk. A no-findings result is limited to the recorded scanner,
+   rules/database, target, and coverage; it is not proof of security.
 
 ## 8. Subagent fan-out pattern
 

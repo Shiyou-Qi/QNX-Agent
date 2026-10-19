@@ -29,6 +29,8 @@ All tools are published under the `uefi` server name, so the model sees
 | `yara_backtest` | `corpus`, `rules`, `manifest?`, `max_samples?`, `max_file_mb?`, timeouts? | bounded corpus scan; labeled sample/rule pairs produce precision, recall, F1, and confusion counts |
 | `firmware_diff` | `baseline`, `candidate`, extracted directories? | compare FV/FFS inventories and hashes; optionally compare UEFIExtract outputs by relative path |
 | `dynamic_evidence` | `source`, `sample_sha256?` | normalize exported CAPE/Cuckoo JSON, Sysmon JSONL, or Procmon CSV into an event timeline and candidate IOCs; offline parsing only |
+| `vulnerability_scan` | `target`, `scanner`, `timeout_seconds?`, `output_file?` | run installed OSV-Scanner (`osv`), Trivy (`trivy`), or Semgrep (`semgrep`) on a local path; target is not launched |
+| `security_assessment` | `report`, `target?`, `target_sha256?`, `scanner?` | offline parse of Trivy/OSV/Semgrep JSON or SARIF into stable finding/evidence IDs and severity summary |
 
 Broken or missing prerequisites never produce a fake success: tools return
 `{"error": "..."}` plus a `hint` or `fallback` field naming the working
@@ -47,7 +49,20 @@ parse_vss vss/vss_00_....bin
 list_smi image.bin guids=guids.csv       # Ring -2 modules
 yara_backtest corpus/ rules=rules.yar manifest=labels.json
 dynamic_evidence sandbox-report.json
+vulnerability_scan ./project scanner=osv
+vulnerability_scan ./project scanner=trivy
+vulnerability_scan ./project scanner=semgrep
+security_assessment ./scan-results.json scanner=trivy
 ```
+
+The vulnerability scanners are optional external executables and must be on
+`PATH`. Scans pass the local target as an argument and do not execute it. OSV,
+Trivy, or Semgrep may contact advisory databases or remote rule registries based
+on their configuration; review data handling before scanning confidential code.
+The assessment parser is offline. Normalized Trivy secret findings redact matched
+values, but a raw saved scanner report may include sensitive matches. A
+zero-finding report only describes the scanner, target, rules/database, and
+coverage actually used; it is not a security certification.
 
 Prefer `walk_fv` over `uefi_walk.py`: `walk_fv` parses the PI structures directly
 (honouring `HeaderLength` and `EFI_FFS_FILE_HEADER2`) and extracts sections.

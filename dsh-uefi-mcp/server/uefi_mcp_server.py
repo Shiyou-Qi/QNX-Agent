@@ -131,6 +131,18 @@ except Exception as exc:  # noqa: BLE001
     dynamic_evidence = None
     print(f"qinx-uefi-mcp: dynamic_evidence unavailable: {exc}", file=sys.stderr)
 
+try:
+    import security_assessment  # noqa: E402
+except Exception as exc:  # noqa: BLE001
+    security_assessment = None
+    print(f"qinx-uefi-mcp: security_assessment unavailable: {exc}", file=sys.stderr)
+
+try:
+    import vulnerability_scan  # noqa: E402
+except Exception as exc:  # noqa: BLE001
+    vulnerability_scan = None
+    print(f"qinx-uefi-mcp: vulnerability_scan unavailable: {exc}", file=sys.stderr)
+
 
 # --------------------------------------------------------------------------- #
 # Dependency-free firmware signature scan (the binwalk fallback).
@@ -256,7 +268,7 @@ except ImportError:
 
 server = MCPServer(
     name="qinx-uefi",
-    version="1.0.0",
+    version="1.0.3",
     instructions=(
         "Qi-NX firmware / UEFI reverse-engineering toolkit. " + BANNER + ".\n"
         "Choose tools from observed evidence: start with tool_status and "
@@ -267,7 +279,10 @@ server = MCPServer(
         "ghidra_evidence only for a concrete code-path question, yara_backtest "
         "before recommending custom rules, firmware_diff for version comparisons, "
         "and dynamic_evidence only to normalize telemetry exported from an isolated "
-        "sandbox. Prefer walk_fv "
+        "sandbox. For source/dependency security scans, choose vulnerability_scan: "
+        "osv for package advisories, trivy for dependency/config/secret checks, "
+        "or semgrep for source rules. security_assessment parses saved reports offline. "
+        "Verify scanner findings before calling them confirmed vulnerabilities. Prefer walk_fv "
         "over uefi_walk for PI-structure parsing and PE32/TE extraction. Treat "
         "heuristics and string markers as leads, not final vulnerability verdicts."
     ),
@@ -313,6 +328,8 @@ async def tool_status() -> str:
                 "ghidra_evidence": "available" if ghidra_evidence else "unavailable",
                 "yara_backtest": "available" if yara_backtest else "unavailable",
                 "dynamic_evidence": "available" if dynamic_evidence else "unavailable",
+                "security_assessment": "available" if security_assessment else "unavailable",
+                "vulnerability_scan": "available" if vulnerability_scan else "unavailable",
             },
             "python_modules": {
                 "lief": mod("lief"),
@@ -326,6 +343,9 @@ async def tool_status() -> str:
                 "chipsec_main": _which("chipsec_main") or "absent",
                 "analyzeHeadless": ((ghidra_evidence._find_ghidra(None) or "absent")
                                     if ghidra_evidence else "absent"),
+                "trivy": _which("trivy") or "absent",
+                "osv-scanner": _which("osv-scanner") or "absent",
+                "semgrep": _which("semgrep") or "absent",
             },
             "fallbacks": {
                 "binwalk_scan": "falls back to the internal signature scan",
@@ -636,6 +656,41 @@ async def dynamic_evidence_(source: str, sample_sha256: str | None = None) -> st
 
     def run() -> dict:
         return dynamic_evidence.normalize(source, sample_sha256)
+
+    return _dumps(await _in_thread(run))
+
+
+@server.tool(name="vulnerability_scan", description="Run an installed read-only scanner against a local file or directory, then normalize its findings. Use scanner='osv' for dependency advisories, 'trivy' for dependency/misconfiguration/secret checks, or 'semgrep' for source-code rules. The target is never executed; scanners may access public vulnerability databases or rule registries, so review data handling before scanning confidential code. Output files are created only at the requested new path; a raw report may contain matched secret values.")
+async def vulnerability_scan_(target: str, scanner: str,
+                              timeout_seconds: int = 900,
+                              output_file: str | None = None) -> str:
+    if vulnerability_scan is None:
+        return _dumps({"error": "vulnerability_scan module unavailable"})
+
+    def run() -> dict:
+        try:
+            return vulnerability_scan.scan(target, scanner,
+                                           timeout_seconds=timeout_seconds,
+                                           output_file=output_file)
+        except Exception as exc:  # noqa: BLE001
+            return {"error": str(exc), "scanner": scanner}
+
+    return _dumps(await _in_thread(run))
+
+
+@server.tool(name="security_assessment", description="Normalize an existing Trivy, OSV-Scanner, Semgrep JSON, or SARIF report into a bounded evidence ledger with finding IDs, severity counts, target/report hashes, and limitations. Offline parsing only; does not rescan or execute the target.")
+async def security_assessment_(report: str, target: str | None = None,
+                               target_sha256: str | None = None,
+                               scanner: str | None = None) -> str:
+    if security_assessment is None:
+        return _dumps({"error": "security_assessment module unavailable"})
+
+    def run() -> dict:
+        try:
+            return security_assessment.assess_file(
+                report, target=target, target_sha256=target_sha256, scanner=scanner)
+        except Exception as exc:  # noqa: BLE001
+            return {"error": str(exc), "report": report}
 
     return _dumps(await _in_thread(run))
 

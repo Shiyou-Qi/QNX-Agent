@@ -1,6 +1,6 @@
 {
   "name": "@local/uefi-mcp",
-  "version": "1.0.1",
+  "version": "1.0.3",
   "private": true,
   "type": "module",
   "description": "QNX-Agent reverse-engineering MCP server bundle — UEFI, Ghidra evidence, YARA backtesting, firmware diff, and sandbox-telemetry tools exposed as mcp__uefi__*. Copyright Qi-NX.",

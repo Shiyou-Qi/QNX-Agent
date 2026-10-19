@@ -29,6 +29,8 @@ external binaries actually exist on this host.
 | `mcp__uefi__yara_scan` | `yara_scan.py` | packer / crypto / IOC rules |
 | `mcp__uefi__pack_detect` | `pack_detect.py` | packing verdict from entropy + sections + imports |
 | `mcp__uefi__firmware_diff` | `firmware_diff.py` | compare FV/FFS identities, module hashes, and extracted payload directories |
+| `mcp__uefi__vulnerability_scan` | `vulnerability_scan.py` | scan extracted filesystems/source/dependencies with OSV-Scanner, Trivy, or Semgrep |
+| `mcp__uefi__security_assessment` | `security_assessment.py` | offline normalization of saved scanner JSON/SARIF into findings and evidence |
 
 Script fallback, when MCP is unavailable: `python .dsh/skills/firmware-uefi/scripts/<tool>.py <args>`.
 Every script accepts `--json` and returns the same structure as its MCP tool.
@@ -147,6 +149,29 @@ Run and document:
 - `chipsec_main -m common.ia32cfg` — IA32_FEATURE_CONTROL MSR lock and VMX/TXT/SMX enable.
 
 Each chipsec `[!]` finding must be cross-checked in the firmware image before reporting.
+
+## 5.1 Vulnerability analysis and security assessment
+
+- Define whether the target is a raw image, extracted filesystem, firmware
+  module, source tree, or live platform. `vulnerability_scan` supports source,
+  dependency manifests, and extracted filesystems; it is not a CVE oracle for
+  opaque SPI bytes.
+- For extracted filesystems, use `osv` for dependency advisories and `trivy` for
+  package, configuration, and secret checks. Use `semgrep` only when source code
+  is available. Record scanner version, scan time, advisory/rule freshness, exact
+  target and hash/revision. Scanners may access remote advisory databases/rules.
+- For platform posture, examine Secure Boot keys/state, capsule signing and
+  anti-rollback paths, BIOS write protection, SPI locks, SMM communication
+  validation, and boot trust. Run CHIPSEC checks only on an identified, authorized
+  physical platform, then correlate findings with the matching firmware build.
+- Match a CVE only when vendor/model, component, exact build/version, and affected
+  range align. Check vendor advisories and backport notes. A scanner match,
+  version string, SMM marker, or CHIPSEC warning alone does not confirm
+  exploitability.
+- Record stable finding/evidence IDs, advisory/rule ID, severity source (CVSS
+  when available), confidence, affected range, evidence path/line/offset/GUID,
+  attack prerequisites, impact, fix/mitigation, validation state, and residual
+  risk. State untested controls and coverage gaps.
 
 ## 6. Boot-flow & trust-anchor mapping
 
