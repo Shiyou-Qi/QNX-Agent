@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Qi-NX-Agent (Firmware / UEFI): walk a UEFI flash image and inventory FVs/FFSs.
+"""QNX-Agent (Firmware / UEFI): walk a UEFI flash image and inventory FVs/FFSs.
 
 Usage:
     python uefi_walk.py <bios.bin> [--json] [--guids] [--extract DIR]
@@ -7,7 +7,7 @@ Usage:
 Behaviour:
   * Uses `uefi_firmware` (LSVD / uefi-firmware-parser) if installed; otherwise
     falls back to a coarse UEFI Volume scan by walking the FVB header magic.
-  * Always prints the banner `# by Qi-NX-Agent (© Qi-NX)`.
+  * Always prints the banner `# by QNX-Agent (© Qi-NX)`.
   * `--extract DIR` will write each PE32/TE section as
     `<DIR>/fvNN_<FV_OFFSET>/<FFS_GUID>_ffs_<FFS_OFFSET>_sec_<N>.pe32` for follow-up
     lief_info / yara_scan. Extraction uses the PI-aware `walk_fv` implementation.
@@ -22,7 +22,7 @@ import struct
 import sys
 from pathlib import Path
 
-BANNER = "by Qi-NX-Agent (Copyright Qi-NX)"
+BANNER = "by QNX-Agent (Copyright Qi-NX)"
 FVH_SIGNATURE = b"_FVH"
 FFS_GUID_RE = re.compile(rb"^[0-9a-fA-F\-]{32,}")
 EFI_COMPRESSION_NONE = 0x00

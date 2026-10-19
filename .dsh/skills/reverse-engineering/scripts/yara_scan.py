@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Qi-NX-Agent: lightweight YARA scanner with packer / crypto / IOC rules.
+"""QNX-Agent: lightweight YARA scanner with packer / crypto / IOC rules.
 
 Usage:
     python yara_scan.py <target> [--rules FILE.yar] [--json] [--max-matches N] [--max-per-rule N]
@@ -10,7 +10,7 @@ Behaviour:
     crypto constants (AES S-box, SHA-2 K, RC4 KSA, MD5 init state), URL/IP/email
     IOC patterns, and a few well-known malware tags.
   * With `--rules`, points at any .yar / directory of rules.
-  * Always prints a header `# by Qi-NX-Agent (© Qi-NX)` then `rule: offset(hex) match_preview`.
+  * Always prints a header `# by QNX-Agent (© Qi-NX)` then `rule: offset(hex) match_preview`.
 """
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ import re
 import sys
 from pathlib import Path
 
-BANNER = "by Qi-NX-Agent (Copyright Qi-NX)"
+BANNER = "by QNX-Agent (Copyright Qi-NX)"
 
 BUILTIN_RULES = r"""
 rule qi_nx_packer_upx

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Qi-NX-Agent: packer / protection detection.
+"""QNX-Agent: packer / protection detection.
 
 Usage:
     python pack_detect.py <binary> [--json]
@@ -23,7 +23,7 @@ import sys
 from collections import Counter
 from pathlib import Path
 
-BANNER = "by Qi-NX-Agent (Copyright Qi-NX)"
+BANNER = "by QNX-Agent (Copyright Qi-NX)"
 
 ENTROPY_HIGH = 7.0
 ENTROPY_VERY_HIGH = 7.5

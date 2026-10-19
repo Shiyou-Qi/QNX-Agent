@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Qi-NX-Agent (Firmware / UEFI): chipsec findings summariser.
+"""QNX-Agent (Firmware / UEFI): chipsec findings summariser.
 
 Usage:
     python chipsec_abstract.py <chipsec-log.txt> [--json]
@@ -8,7 +8,7 @@ Behaviour:
   * Parse a chipsec_main / chipsec_util log file.
   * Group by module, extract result line (`[!]`, `[+]`, `[*]`, `[-]`) and turn
     them into structured JSON the agent can synthesise into an audit narrative.
-  * Always prints the banner `# by Qi-NX-Agent (© Qi-NX)`.
+  * Always prints the banner `# by QNX-Agent (© Qi-NX)`.
 """
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ import re
 import sys
 from pathlib import Path
 
-BANNER = "by Qi-NX-Agent (Copyright Qi-NX)"
+BANNER = "by QNX-Agent (Copyright Qi-NX)"
 
 MODULE_RX = re.compile(r"^\[\*\]\s+running module:\s+(\S+)")
 RESULT_RX = re.compile(r"^\[([!\+\-\*x])\]\s+(.*)$")

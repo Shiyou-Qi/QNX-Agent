@@ -16,7 +16,7 @@ import sys
 from collections import Counter
 from pathlib import Path
 
-BANNER = "by Qi-NX-Agent (Copyright Qi-NX)"
+BANNER = "by QNX-Agent (Copyright Qi-NX)"
 MAX_INPUT_SIZE = 256 * 1024 * 1024
 MAX_EVENTS = 2000
 URL_RE = re.compile(r"https?://[^\s\"'<>]{4,512}", re.IGNORECASE)

@@ -16,7 +16,7 @@ from pathlib import Path
 
 import walk_fv
 
-BANNER = "by Qi-NX-Agent (Copyright Qi-NX)"
+BANNER = "by QNX-Agent (Copyright Qi-NX)"
 MAX_IMAGE_SIZE = 512 * 1024 * 1024
 MAX_TREE_FILES = 10000
 MAX_DIFF_DETAILS = 500

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Qi-NX-Agent (Firmware / UEFI): structured Firmware Volume / FFS / section walker.
+"""QNX-Agent (Firmware / UEFI): structured Firmware Volume / FFS / section walker.
 
 Usage:
     python walk_fv.py <image> [--json] [--extract DIR] [--max-files N]
@@ -28,7 +28,7 @@ import json
 import sys
 from pathlib import Path
 
-BANNER = "by Qi-NX-Agent (Copyright Qi-NX)"
+BANNER = "by QNX-Agent (Copyright Qi-NX)"
 
 FV_SIGNATURE = b"_FVH"
 FV_SIG_OFFSET = 0x28           # "_FVH" sits at header + 0x28

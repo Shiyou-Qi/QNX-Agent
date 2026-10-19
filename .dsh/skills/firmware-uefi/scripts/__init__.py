@@ -1,7 +1,7 @@
-"""Qi-NX-Agent (Firmware / UEFI) — firmware scripts index.
+"""QNX-Agent (Firmware / UEFI) — firmware scripts index.
 
-These scripts are the primary hands of the Qi-NX-Agent `uefi` preset.
-All scripts print a short header `by Qi-NX-Agent (Copyright Qi-NX)` and write artifacts
+These scripts are the primary hands of the QNX-Agent `uefi` preset.
+All scripts print a short header `by QNX-Agent (Copyright Qi-NX)` and write artifacts
 to stdout or to `--out` paths so a calling Agent can capture them as files.
 
 Dependencies (optional per script):

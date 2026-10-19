@@ -16,7 +16,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-BANNER = "by Qi-NX-Agent (Copyright Qi-NX)"
+BANNER = "by QNX-Agent (Copyright Qi-NX)"
 GHIDRA_SCRIPT = Path(__file__).with_name("ghidra_scripts")
 
 

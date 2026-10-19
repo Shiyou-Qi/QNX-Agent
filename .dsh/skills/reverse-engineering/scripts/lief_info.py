@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Qi-NX-Agent: LIEF-based triage for PE / ELF / Mach-O / DEX / OAT / ART / VDEX.
+"""QNX-Agent: LIEF-based triage for PE / ELF / Mach-O / DEX / OAT / ART / VDEX.
 
 Usage:
     python lief_info.py <binary> [--json] [--sections] [--imports] [--exports] [--relocs]
@@ -16,7 +16,7 @@ import json
 import sys
 from pathlib import Path
 
-BANNER = "by Qi-NX-Agent (Copyright Qi-NX)"
+BANNER = "by QNX-Agent (Copyright Qi-NX)"
 
 
 def sha256_of(path: Path) -> str:

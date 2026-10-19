@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Qi-NX-Agent (Firmware / UEFI): carve UEFI variable stores (NVRAM) out of an image.
+"""QNX-Agent (Firmware / UEFI): carve UEFI variable stores (NVRAM) out of an image.
 
 Usage:
     python extract_vss.py <image> --out DIR [--json] [--size BYTES] [--raw-scan]
@@ -31,7 +31,7 @@ import json
 import sys
 from pathlib import Path
 
-BANNER = "by Qi-NX-Agent (Copyright Qi-NX)"
+BANNER = "by QNX-Agent (Copyright Qi-NX)"
 
 START_ID = 0x55AA               # EDK2 variable header StartId
 VSS_MARKERS = (b"_VSS", b"_VSS2", b"_VSS3")

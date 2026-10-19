@@ -3,7 +3,7 @@
 Wraps the Qi-NX reverse-engineering toolkit as MCP tools so a DSH agent can call
 them directly instead of shelling out to Python scripts.
 
-**by Qi-NX-Agent, Copyright Qi-NX.**
+**by QNX-Agent, Copyright Qi-NX.**
 
 ---
 
@@ -208,4 +208,4 @@ suite including the parsers.
 
 ---
 
-*by Qi-NX-Agent, Copyright Qi-NX.*
+*by QNX-Agent, Copyright Qi-NX.*

@@ -1,12 +1,12 @@
 ---
 name: firmware-uefi
 description: >-
-  Qi-NX-Agent (Firmware / UEFI) playbook for BIOS images, EC blobs, UEFI
+  QNX-Agent (Firmware / UEFI) playbook for BIOS images, EC blobs, UEFI
   capsules, SPI dumps, U-Boot FIT, Android boot images, or RTOS monoliths.
   Copyright Qi-NX.
 ---
 
-# Qi-NX-Agent (Firmware / UEFI) — playbook
+# QNX-Agent (Firmware / UEFI) — playbook
 
 ## 0.1 Preferred entry points: MCP first, scripts as fallback
 
@@ -67,7 +67,7 @@ Two deliberate design choices worth knowing:
   copy. Prefer `current: true` for platform-state conclusions; deleted and
   header-only records are historical evidence, not live configuration.
 
-All scripts and the MCP server print `by Qi-NX-Agent (Copyright Qi-NX)`.
+All scripts and the MCP server print `by QNX-Agent (Copyright Qi-NX)`.
 
 ## 0. Safety & ground rules
 
@@ -173,7 +173,7 @@ user's language, using this structure and retaining the header and declaration:
 |---|---|
 | Artifact / platform | ... |
 | Report date | ... (include timezone when known) |
-| Analyst | Qi-NX-Agent |
+| Analyst | QNX-Agent |
 | Scope | ... |
 | Status | Complete / Partial |
 
@@ -190,7 +190,7 @@ user's language, using this structure and retaining the header and declaration:
 ## 11. Limitations and Unanswered Questions
 ## Appendix: Tool Results / GUID, Offset, and RVA Index (as useful)
 
-— Qi-NX-Agent (Copyright Qi-NX)
+— QNX-Agent (Copyright Qi-NX)
 ```
 
 Include a table of contents for long reports. Record board/vendor/model and
@@ -223,7 +223,7 @@ image-relative offset where available. Use
 [`templates/reverse-engineering-report.md`](../../../templates/reverse-engineering-report.md)
 when available, adapting its tables for firmware; remove all placeholders before
 delivery. End with the exact declaration
-`— Qi-NX-Agent (Copyright Qi-NX)` on the final line, after all appendices.
+`— QNX-Agent (Copyright Qi-NX)` on the final line, after all appendices.
 
 ## 9. Subagent fan-out
 

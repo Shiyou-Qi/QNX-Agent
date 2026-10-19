@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Qi-NX-Agent (Firmware / UEFI): enumerate SMM / MM modules and dispatch surface.
+"""QNX-Agent (Firmware / UEFI): enumerate SMM / MM modules and dispatch surface.
 
 Usage:
     python list_smi.py <image-or-module> [--json] [--guids guids.csv]
@@ -35,7 +35,7 @@ import json
 import sys
 from pathlib import Path
 
-BANNER = "by Qi-NX-Agent (Copyright Qi-NX)"
+BANNER = "by QNX-Agent (Copyright Qi-NX)"
 
 # EDK2 / PI names that evidence SMM participation. Searched as ASCII and UTF-16LE.
 SMM_MARKERS = (

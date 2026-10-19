@@ -16,7 +16,7 @@ Design notes
   instead of pretending to succeed, and fall back to the dependency-free
   implementation where one exists.
 
-Banner: by Qi-NX-Agent (Copyright Qi-NX)
+Banner: by QNX-Agent (Copyright Qi-NX)
 """
 import hashlib
 import json
@@ -26,7 +26,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-BANNER = "by Qi-NX-Agent (Copyright Qi-NX)"
+BANNER = "by QNX-Agent (Copyright Qi-NX)"
 
 # --------------------------------------------------------------------------- #
 # Locate the Qi-NX script modules (firmware toolkit + LIEF/YARA helpers).

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Qi-NX-Agent (Firmware / UEFI): decode UEFI NVRAM variables from an image or a
+"""QNX-Agent (Firmware / UEFI): decode UEFI NVRAM variables from an image or a
 carved variable-store blob.
 
 Usage:
@@ -26,7 +26,7 @@ import json
 import sys
 from pathlib import Path
 
-BANNER = "by Qi-NX-Agent (Copyright Qi-NX)"
+BANNER = "by QNX-Agent (Copyright Qi-NX)"
 
 try:
     import extract_vss  # type: ignore  # sibling module

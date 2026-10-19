@@ -4,7 +4,7 @@
 |---|---|
 | Case / artifact | [name or case ID] |
 | Report date | [YYYY-MM-DD, timezone if known] |
-| Analyst | Qi-NX-Agent |
+| Analyst | QNX-Agent |
 | Requested scope | [questions and boundaries] |
 | Analysis status | [Complete / Partial] |
 | Artifact SHA-256 | [hash or Not available] |
@@ -86,4 +86,4 @@
 
 [Function and callsite tables, firmware volume / file maps, protocol field maps, or bounded tool-output extracts.]
 
-— Qi-NX-Agent (Copyright Qi-NX)
+— QNX-Agent (Copyright Qi-NX)

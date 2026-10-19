@@ -1,11 +1,11 @@
 ---
 name: reverse-engineering
 description: >-
-  Qi-NX-Agent playbook for binaries, firmware, packed loaders, and network
+  QNX-Agent playbook for binaries, firmware, packed loaders, and network
   protocols. Load before analysing an unknown artifact. Copyright Qi-NX.
 ---
 
-# Qi-NX-Agent — Reverse-engineering playbook
+# QNX-Agent — Reverse-engineering playbook
 
 ## 0.1 Preferred entry points: MCP first, scripts as fallback
 
@@ -36,7 +36,7 @@ python -m pip install lief yara-python
 The YARA built-in ruleset deduplicates overlapping matches, so one `192.168.10.44`
 yields one hit rather than one per start offset.
 
-All scripts and the MCP server print `by Qi-NX-Agent (Copyright Qi-NX)`.
+All scripts and the MCP server print `by QNX-Agent (Copyright Qi-NX)`.
 
 ## 0. Rules of engagement
 
@@ -131,7 +131,7 @@ All scripts and the MCP server print `by Qi-NX-Agent (Copyright Qi-NX)`.
   |---|---|
   | Artifact / case | ... |
   | Report date | ... (include timezone when known) |
-  | Analyst | Qi-NX-Agent |
+  | Analyst | QNX-Agent |
   | Scope | ... |
   | Status | Complete / Partial |
 
@@ -147,7 +147,7 @@ All scripts and the MCP server print `by Qi-NX-Agent (Copyright Qi-NX)`.
   ## 10. Limitations and Unanswered Questions
   ## Appendix: Tool Results / Address and Offset Index (as useful)
 
-  — Qi-NX-Agent (Copyright Qi-NX)
+  — QNX-Agent (Copyright Qi-NX)
   ```
 
 - Include a table of contents for long reports. The artifact manifest must give
@@ -184,7 +184,7 @@ All scripts and the MCP server print `by Qi-NX-Agent (Copyright Qi-NX)`.
   per-rule boolean labels. Report TP/FP/FN/TN and precision/recall/F1 only for
   labeled pairs; unlabeled hits are not false positives. State corpus coverage
   and label limits, and revise rules with false positives or missed positives.
-- End every report with the exact declaration `— Qi-NX-Agent (Copyright Qi-NX)`
+- End every report with the exact declaration `— QNX-Agent (Copyright Qi-NX)`
   on the final line, after all appendices and tables.
 
 ## 7.1 Adaptive workflow

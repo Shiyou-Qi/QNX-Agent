@@ -1,9 +1,9 @@
 {
   "name": "@local/dsh-uefi-preset",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "private": true,
   "type": "module",
-  "description": "Qi-NX-Agent（固件 / UEFI）：面向 SPI、UEFI Capsule、EC 与嵌入式固件逆向分析的 DSH Agent 预设。Qi-NX 版权所有。",
+  "description": "QNX-Agent（固件 / UEFI）：固件分析模式；提供固件文件和平台信息即可开始。Qi-NX 版权所有。",
   "author": "Qi-NX",
   "license": "UNLICENSED",
   "dsh": { "bundle": { "patch": "./cordis.patch.yml" } }

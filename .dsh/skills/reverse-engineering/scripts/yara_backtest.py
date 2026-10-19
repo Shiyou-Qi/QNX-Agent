@@ -23,7 +23,7 @@ import time
 from collections import defaultdict
 from pathlib import Path
 
-BANNER = "by Qi-NX-Agent (Copyright Qi-NX)"
+BANNER = "by QNX-Agent (Copyright Qi-NX)"
 
 
 def _sha256(path: Path) -> str:
