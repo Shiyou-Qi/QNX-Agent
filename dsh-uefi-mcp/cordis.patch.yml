@@ -8,7 +8,8 @@
 #   uefi_firmware_parse, binwalk_scan, uefitool_extract,
 #   lief_info, yara_scan, pack_detect, ghidra_evidence, yara_backtest,
 #   firmware_diff, dynamic_evidence, vulnerability_scan, security_assessment,
-#   android_apk_analyze
+#   android_apk_analyze, android_apk_doctor, android_apk_compare,
+#   android_dependency_scan, android_dynamic_session, android_apk_report
 #
 # The server is `server/uefi_mcp_server.py`. It locates the Qi-NX scripts
 # from its own path, so this row needs no machine-specific absolute paths.

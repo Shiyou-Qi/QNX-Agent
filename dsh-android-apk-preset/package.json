@@ -1,9 +1,9 @@
 {
   "name": "@local/dsh-android-apk-preset",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "private": true,
   "type": "module",
-  "description": "QNX-Agent-安卓 APK 逆向：独立的 APK 分析引擎，覆盖包/签名/Manifest/DEX 首轮分析及安全评估。Qi-NX 版权所有。",
+  "description": "QNX-Agent-安卓 APK 逆向：APK静态/代码/依赖/CVE/动态评估与报告引擎。Qi-NX 版权所有。",
   "author": "Qi-NX",
   "license": "UNLICENSED",
   "dsh": { "bundle": { "patch": "./cordis.patch.yml" } }

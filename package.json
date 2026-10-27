@@ -1,6 +1,6 @@
 {
   "name": "qi-nx-agent",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "private": true,
   "type": "module",
   "description": "QNX-Agent — DeepSeek Harness reverse-engineering agents for binaries, Android APKs, protocols, and firmware, with evidence-led vulnerability and security assessments. Copyright Qi-NX.",

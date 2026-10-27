@@ -151,6 +151,12 @@ except Exception as exc:  # noqa: BLE001
     android_apk_analyze = None
     print(f"qinx-uefi-mcp: android_apk_analyze unavailable: {exc}", file=sys.stderr)
 
+try:
+    import android_apk_workflows  # noqa: E402
+except Exception as exc:  # noqa: BLE001
+    android_apk_workflows = None
+    print(f"qinx-uefi-mcp: android_apk_workflows unavailable: {exc}", file=sys.stderr)
+
 
 # --------------------------------------------------------------------------- #
 # Dependency-free firmware signature scan (the binwalk fallback).
@@ -276,14 +282,14 @@ except ImportError:
 
 server = MCPServer(
     name="qinx-uefi",
-    version="1.0.4",
+    version="1.0.5",
     instructions=(
         "Qi-NX reverse-engineering toolkit for firmware and Android packages. " + BANNER + ".\n"
         "Choose tools from observed evidence: start with tool_status and "
         "android_apk_analyze for APK/APKS/XAPK/AAB static inventory and manifest "
-        "candidates; this tool never installs or executes app code, and findings "
-        "require manual validation. Use focused external JADX/apktool/Ghidra analysis "
-        "for code paths. "
+        "candidates; optional JADX/APKTool source inspection, Android doctor, version "
+        "comparison, SBOM/CVE scan, and full report tools are available. Dynamic "
+        "install/launch requires explicit user authorization and emulator confirmation. "
         "binwalk_scan; use walk_fv when firmware-volume signatures or a BIOS "
         "region are present; use extract_vss/parse_vss when NVRAM is relevant; "
         "use list_smi for MM/SMM leads. If compressed sections appear, decompress "
@@ -343,6 +349,7 @@ async def tool_status() -> str:
                 "security_assessment": "available" if security_assessment else "unavailable",
                 "vulnerability_scan": "available" if vulnerability_scan else "unavailable",
                 "android_apk_analyze": "available" if android_apk_analyze else "unavailable",
+                "android_apk_workflows": "available" if android_apk_workflows else "unavailable",
             },
             "python_modules": {
                 "lief": mod("lief"),
@@ -359,13 +366,18 @@ async def tool_status() -> str:
                 "trivy": _which("trivy") or "absent",
                 "osv-scanner": _which("osv-scanner") or "absent",
                 "semgrep": _which("semgrep") or "absent",
-                "apkanalyzer": _which("apkanalyzer") or _which("apkanalyzer.bat") or "absent",
+                "apkanalyzer": (" ".join(android_apk_analyze._tool_command("apkanalyzer") or [])
+                                if android_apk_analyze and android_apk_analyze._tool_command("apkanalyzer") else "absent"),
                 "aapt2": _which("aapt2") or _which("aapt2.exe") or "absent",
-                "apksigner": _which("apksigner") or _which("apksigner.bat") or "absent",
-                "apktool": _which("apktool") or _which("apktool.bat") or "absent",
-                "jadx": _which("jadx") or _which("jadx.bat") or "absent",
+                "apksigner": (" ".join(android_apk_analyze._tool_command("apksigner") or [])
+                              if android_apk_analyze and android_apk_analyze._tool_command("apksigner") else "absent"),
+                "apktool": (" ".join(android_apk_analyze._tool_command("apktool") or [])
+                            if android_apk_analyze and android_apk_analyze._tool_command("apktool") else "absent"),
+                "jadx": (" ".join(android_apk_analyze._tool_command("jadx") or [])
+                         if android_apk_analyze and android_apk_analyze._tool_command("jadx") else "absent"),
                 "adb": _which("adb") or _which("adb.exe") or "absent",
                 "frida": _which("frida") or "absent",
+                "syft": _which("syft") or "absent",
             },
             "fallbacks": {
                 "binwalk_scan": "falls back to the internal signature scan",
@@ -680,18 +692,82 @@ async def dynamic_evidence_(source: str, sample_sha256: str | None = None) -> st
     return _dumps(await _in_thread(run))
 
 
-@server.tool(name="android_apk_analyze", description="Run Qi-NX's read-only Android package analyzer on an APK/APKS/XAPK/APKM/AAB. Computes SHA-256, inventories ZIP members and split/native/DEX content, checks unsafe archive paths and compression ratios, decodes the manifest with available Android SDK tools, audits common manifest exposure settings, and verifies signer details with apksigner when installed. It does not extract, install, or execute the app. Findings are static candidates, not confirmed vulnerabilities; dynamic, DEX, native, dependency, and backend analysis require separate follow-up.")
-async def android_apk_analyze_(target: str, max_entries: int = 2000) -> str:
+@server.tool(name="android_apk_analyze", description="Run Qi-NX's read-only Android package analysis on an APK/APKS/XAPK/APKM/AAB. Computes hashes, inventories ZIP/DEX/native content, maps candidates to OWASP MASVS/selected MASTG references, and inventories exact Maven metadata. By default it uses bounded Python ZIP/DEX inspection only. Set isolated_tooling_confirmed=true before invoking Android SDK parsers/signature tools on the sample; additionally set deep_analysis=true for JADX/APKTool. OSV network access only when scan_vulnerabilities=true. Does not install or execute the app.")
+async def android_apk_analyze_(target: str, max_entries: int = 2000,
+                              deep_analysis: bool = False,
+                              isolated_tooling_confirmed: bool = False,
+                              scan_vulnerabilities: bool = False) -> str:
     if android_apk_analyze is None:
         return _dumps({"error": "android_apk_analyze module unavailable"})
 
     def run() -> dict:
         try:
-            return android_apk_analyze.analyze(target, max_entries=max_entries)
+            return android_apk_analyze.analyze(target, max_entries=max_entries,
+                                               deep_analysis=deep_analysis,
+                                               isolated_tooling_confirmed=isolated_tooling_confirmed,
+                                               scan_vulnerabilities=scan_vulnerabilities)
         except Exception as exc:  # noqa: BLE001
             return {"error": f"APK analysis failed: {exc.__class__.__name__}",
                     "target": target}
 
+    return _dumps(await _in_thread(run))
+
+
+@server.tool(name="android_apk_doctor", description="Check Android analysis tool paths/versions, SDK environment, and connected emulator serials. Read-only; does not install or launch an app.")
+async def android_apk_doctor_() -> str:
+    if android_apk_workflows is None:
+        return _dumps({"error": "Android workflow module unavailable"})
+    return _dumps(await _in_thread(android_apk_workflows.tool_doctor))
+
+
+@server.tool(name="android_apk_compare", description="Compare two APK versions by sample hashes, Manifest/configuration, archive members, dependency PURLs, and static finding candidates. No app execution. JADX/APKTool require both deep_analysis=true and isolated_tooling_confirmed=true.")
+async def android_apk_compare_(before: str, after: str, deep_analysis: bool = False,
+                               isolated_tooling_confirmed: bool = False) -> str:
+    if android_apk_workflows is None:
+        return _dumps({"error": "Android workflow module unavailable"})
+    return _dumps(await _in_thread(android_apk_workflows.compare_apks, before, after,
+                                   deep_analysis, isolated_tooling_confirmed))
+
+
+@server.tool(name="android_dependency_scan", description="Extract exact Maven coordinates from APK META-INF/pom.properties, emit CycloneDX SBOM, and optionally check that SBOM with installed OSV-Scanner. OSV lookup may access public advisory data; enable it explicitly with scan_vulnerabilities=true. APK-only dependency inventory is incomplete for shaded, obfuscated, native, or metadata-free libraries.")
+async def android_dependency_scan_(target: str, scan_vulnerabilities: bool = False) -> str:
+    if android_apk_analyze is None:
+        return _dumps({"error": "android_apk_analyze module unavailable"})
+    def run() -> dict:
+        result = android_apk_analyze.analyze(target, max_entries=1, deep_analysis=False,
+                                             scan_vulnerabilities=scan_vulnerabilities)
+        return result.get("dependency_analysis", result)
+    return _dumps(await _in_thread(run))
+
+
+@server.tool(name="android_dynamic_session", description="Authorized, bounded install/launch/logcat observation for one APK on a confirmed disposable Android emulator only. Requires authorized=true, isolated_emulator_confirmed=true, a matching package name, and an emulator-<port> serial. Uses adb install without replace mode so an existing app is not upgraded; launches once. The app remains installed after capture. It does not clear data, root the device, bypass controls, or exercise backend actions. Logs are redacted but may still contain sensitive data.")
+async def android_dynamic_session_(apk: str, package_name: str, device_serial: str,
+                                   authorized: bool, isolated_emulator_confirmed: bool,
+                                   observation_seconds: int = 15) -> str:
+    if android_apk_workflows is None:
+        return _dumps({"error": "Android workflow module unavailable"})
+    return _dumps(await _in_thread(android_apk_workflows.dynamic_emulator_session,
+                                   apk, package_name, device_serial, authorized,
+                                   isolated_emulator_confirmed, observation_seconds))
+
+
+@server.tool(name="android_apk_report", description="Generate a complete standalone Markdown APK assessment report with sample identity, coverage, tools, MASVS/MASTG-mapped findings, code/dependency leads, authorization scope, limitations, evidence ledger, and Qi-NX footer. Android sample parsers require isolated_tooling_confirmed=true; JADX/APKTool also require deep_analysis=true. Optionally write to a new output path; existing files are never overwritten. OSV network lookup is separately opt-in.")
+async def android_apk_report_(target: str, output_path: str | None = None,
+                             language: str = "zh", deep_analysis: bool = False,
+                             isolated_tooling_confirmed: bool = False,
+                             scan_vulnerabilities: bool = False,
+                             dynamic_json: str | None = None,
+                             authorization_scope: str = "未由分析引擎记录；需由委托方补充") -> str:
+    if android_apk_workflows is None:
+        return _dumps({"error": "Android workflow module unavailable"})
+    def run() -> dict:
+        try:
+            return android_apk_workflows.write_report(target, output_path, language,
+                                                       deep_analysis, isolated_tooling_confirmed,
+                                                       scan_vulnerabilities,
+                                                       dynamic_json, authorization_scope)
+        except Exception as exc:  # noqa: BLE001
+            return {"error": f"report generation failed: {exc.__class__.__name__}"}
     return _dumps(await _in_thread(run))
 
 

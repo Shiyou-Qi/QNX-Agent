@@ -26,7 +26,7 @@
 | | Included |
 |---|---|
 | **Agent presets** | Binary / protocol, Android APK, Firmware / UEFI, and a coordinating Team Lead |
-| **MCP server** | Local `mcp__uefi__*` tools for triage, firmware parsing, and NVRAM analysis |
+| **MCP server** | Local `mcp__uefi__*` tools for binary, APK, firmware, and security workflows |
 | **Analysis playbooks** | Binary/protocol, Android APK, and firmware reverse-engineering workflows |
 | **Analysis scripts** | Android APK engine plus fifteen binary/firmware Python utilities; JSON output supported |
 | **Install model** | One composition bundle for the complete kit, or individual bundles for development |
@@ -43,7 +43,7 @@ Install the complete bundle once, then select the preset that fits the task in t
 | **QNX-Agent-固件逆向** (`uefi`) | BIOS images, SPI dumps, and capsules | FV / FFS structure, NVRAM / VSS, SMM triage, boot flow, and trust anchors |
 | **QNX-Agent-团队协作** (`reversing-team`) | Multi-layer investigations | Coordinates binary and firmware work, delegates scoped threads, and synthesizes findings |
 
-Each preset loads its matching playbook:
+Presets carry task-specific workflows; these standalone playbooks are available for deeper manual reference:
 
 - [Binary and protocol reverse-engineering playbook](.dsh/skills/reverse-engineering/SKILL.md)
 - [Firmware and UEFI playbook](.dsh/skills/firmware-uefi/SKILL.md)
@@ -109,9 +109,9 @@ Scanner hits remain candidates until affected versions, reachability/configurati
 
 ### Android APK reverse engineering and mobile security
 
-The dedicated preset calls the built-in [`android_apk_analyze.py`](.dsh/engines/android-apk/android_apk_analyze.py) engine through `mcp__uefi__android_apk_analyze`. It hashes and inventories APK containers and split/native/DEX members, decodes binary Manifest XML through `apkanalyzer` or `aapt2` when installed, reports signing verification through `apksigner`, checks common exported-component and security-configuration conditions, and extracts bounded DEX string clues. It never installs or executes the app.
+The dedicated preset uses the built-in [`android_apk_analyze.py`](.dsh/engines/android-apk/android_apk_analyze.py) engine and the `mcp__uefi__android_*` workflow tools. Its default pass uses bounded Python ZIP/DEX inspection. Android SDK/signature tools parse the sample and run only after `isolated_tooling_confirmed=true`; JADX/APKTool source decoding additionally needs `deep_analysis=true`. Both require the user to confirm the analyst environment is isolated. Results map selected candidates to MASVS areas and current MASTG references. `android_apk_doctor` reports tool and emulator availability; `android_apk_compare` compares versions; `android_dependency_scan` emits a CycloneDX SBOM from exact embedded Maven metadata and can opt into OSV scanning; `android_apk_report` generates a full standalone Markdown assessment.
 
-This first-pass engine creates actionable leads; it does not replace JADX/MobSF/native-code review, dependency reachability analysis, backend testing, or an authorized emulator session. Findings require manual validation against the app's code paths and target Android versions. Dynamic analysis is scoped to authorized targets and disposable test environments. Use the [Android APK security report template](templates/android-apk-security-report.md) for a complete assessment.
+The optional `android_dynamic_session` installs and launches one APK only on a serial positively identified as an Android emulator, and requires explicit user authorization plus confirmation that the emulator is disposable. It captures bounded, package-PID-filtered logs; the APK remains installed afterward. No real account or sensitive data should be present. JADX/APKTool and other decoders parse hostile files and can have parser vulnerabilities, so use an isolated analyst environment for high-risk samples. Findings remain leads until paths, affected versions, device context, reachability, and impact are verified. Public advisory lookups require explicit opt-in; confidential APKs should not be uploaded to public scanners.
 
 The MCP server also provides availability checks, binary triage, signature scans, firmware parsing, extraction, vulnerability scanning, and offline security assessment. Optional [`osv-scanner`](https://google.github.io/osv-scanner/installation/), [Trivy](https://www.trivy.dev/docs/latest/getting-started/), and [Semgrep](https://docs.semgrep.dev/getting-started/quickstart) executables must be installed separately. Scans can contact advisory databases or rule registries, depending on scanner configuration; review data-handling requirements for confidential code. Raw saved scanner reports may contain sensitive matches. See the [MCP server guide](dsh-uefi-mcp/README.md) for the complete tool list and manifest format.
 
@@ -199,7 +199,7 @@ The suite compiles scripts, checks their help output, validates parsers against 
 ├── dsh-uefi-preset/                Firmware / UEFI preset
 ├── dsh-reversing-team-preset/      Coordinating Team Lead preset
 ├── dsh-uefi-mcp/                   Local MCP server and bundle
-├── .dsh/engines/android-apk/       Built-in Android APK static-analysis engine
+├── .dsh/engines/android-apk/       Android APK engine, doctor, diff, dynamic workflow, report builder
 ├── .dsh/skills/                    Binary and firmware playbooks/utilities
 └── tests/                          Fixtures and verification suite
 ```

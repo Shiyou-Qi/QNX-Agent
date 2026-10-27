@@ -1,6 +1,6 @@
 {
   "name": "@local/dsh-reversing-preset",
-  "version": "1.1.7",
+  "version": "1.1.8",
   "private": true,
   "type": "module",
   "description": "QNX-Agent-二进制与 Android APK 逆向：支持应用分析、漏洞验证及安全评估。Qi-NX 版权所有。",

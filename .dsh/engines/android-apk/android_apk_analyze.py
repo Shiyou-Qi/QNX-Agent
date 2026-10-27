@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Bounded, read-only first-pass Android package inventory and manifest audit.
+"""Bounded Android package inventory and security-candidate analysis.
 
-Uses Python's ZIP reader plus optional Android SDK tools already on PATH. It
-does not extract files, install packages, execute app code, or modify inputs.
+The default path uses Python's ZIP reader and never extracts, installs, or
+executes app code. Optional external parsers require an explicit isolated-tooling
+confirmation; JADX/APKTool output is confined to temporary directories.
 """
 from __future__ import annotations
 
@@ -17,6 +18,7 @@ import tempfile
 import xml.etree.ElementTree as ET
 import zipfile
 from pathlib import Path, PurePosixPath
+from urllib.parse import quote
 
 BANNER = "by QNX-Agent (Copyright Qi-NX)"
 MAX_APK_BYTES = 2 * 1024 * 1024 * 1024
@@ -28,6 +30,9 @@ MAX_DEX_SCAN_BYTES = 128 * 1024 * 1024
 MAX_DEX_STRINGS = 250_000
 MAX_DEX_FILES_SCANNED = 64
 MAX_TOOL_OUTPUT_BYTES = 2 * 1024 * 1024
+MAX_DECOMPILED_FILES = 20_000
+MAX_CODE_FINDINGS = 500
+MAX_DECOMPILED_SOURCE_BYTES = 512 * 1024 * 1024
 ANDROID_NS = "{http://schemas.android.com/apk/res/android}"
 COMPONENT_TAGS = {"activity", "activity-alias", "service", "receiver", "provider"}
 DEX_CLUE_PATTERNS = {
@@ -40,6 +45,46 @@ DEX_CLUE_PATTERNS = {
     "sensitive-api": re.compile(r"SmsManager|AccessibilityService|ClipboardManager|TelephonyManager", re.IGNORECASE),
 }
 SECRET_PATTERN = re.compile(r"(?i)(api[_-]?key|client[_-]?secret|password|access[_-]?token|secret)\s*[:=]\s*([^\s,;]{8,})")
+CODE_RULES = (
+    ("webview-javascript-bridge", "platform", re.compile(r"addJavascriptInterface\s*\("), "Review bridge exposure, origin validation, and reachable JavaScript-controlled methods."),
+    ("webview-debugging", "platform", re.compile(r"setWebContentsDebuggingEnabled\s*\(\s*true"), "Confirm debugging is disabled in release builds."),
+    ("unsafe-tls-callback", "network", re.compile(r"onReceivedSslError\s*\([^)]*\)\s*\{[^}]{0,600}handler\.proceed\s*\(", re.DOTALL), "Trace whether certificate errors are bypassed on a reachable WebView path."),
+    ("trust-all-tls", "network", re.compile(r"checkServerTrusted\s*\([^)]*\)\s*\{\s*\}|ALLOW_ALL_HOSTNAME_VERIFIER|setHostnameVerifier\([^)]*ALLOW_ALL", re.DOTALL), "Validate the trust implementation and the network clients that use it."),
+    ("dynamic-code-loading", "code", re.compile(r"(DexClassLoader|InMemoryDexClassLoader|PathClassLoader)\s*\("), "Identify loaded code source, signature/integrity checks, and whether the path is attacker-controlled."),
+    ("process-execution", "code", re.compile(r"Runtime\.getRuntime\(\)\.exec\s*\(|new\s+ProcessBuilder\s*\("), "Check command construction, input validation, and reachable caller paths."),
+    ("world-readable-writable-mode", "storage", re.compile(r"MODE_WORLD_(READABLE|WRITEABLE)"), "Review whether sensitive data is exposed across app boundaries."),
+    ("weak-random", "crypto", re.compile(r"new\s+java\.util\.Random\s*\(|Math\.random\s*\("), "Determine whether randomness protects secrets, tokens, keys, or security decisions."),
+    ("static-secret-candidate", "crypto", SECRET_PATTERN),
+)
+MASVS_AREAS = {
+    "platform": "MASVS-PLATFORM", "network": "MASVS-NETWORK",
+    "storage": "MASVS-STORAGE", "crypto": "MASVS-CRYPTO",
+    "code": "MASVS-CODE", "application-configuration": "MASVS-RESILIENCE",
+    "transport-security": "MASVS-NETWORK", "data-protection": "MASVS-STORAGE",
+    "component-exposure": "MASVS-PLATFORM", "signing-integrity": "MASVS-RESILIENCE",
+}
+REMEDIATION_HINTS = {
+    "application-configuration": "按发布基线关闭调试/测试标志，并验证正式构建产物。",
+    "transport-security": "敏感流量强制使用 TLS；检查 Network Security Config、证书校验和真实调用路径。",
+    "data-protection": "按业务威胁模型收紧备份规则，敏感数据使用合适的加密与访问控制。",
+    "component-exposure": "为外部组件实施最小权限与服务端/组件内授权，并验证所有输入。",
+    "signing-integrity": "用可信发布证书重新签名，并与可信基线证书摘要核对。",
+    "webview-javascript-bridge": "移除不必要的 JavaScript bridge，限制可信来源并对桥接方法做细粒度授权。",
+    "webview-debugging": "仅在受控调试构建启用 WebView 调试，发布构建显式关闭。",
+    "unsafe-tls-callback": "拒绝无效证书并修复信任链；不要在回调中继续处理证书错误。",
+    "trust-all-tls": "使用平台默认信任管理器和主机名验证器，移除信任所有实现。",
+    "dynamic-code-loading": "验证动态代码来源、签名和完整性；限制可写路径中的代码加载。",
+    "process-execution": "避免拼接 shell 命令；使用固定参数 API 并验证不可信输入。",
+    "world-readable-writable-mode": "使用应用私有存储或受控 ContentProvider，移除跨应用世界可读写模式。",
+    "weak-random": "安全敏感随机值使用 SecureRandom 或 Android Keystore，不用普通 Random/Math.random。",
+    "static-secret-candidate": "轮换暴露凭据并移至服务端或受保护密钥存储；客户端混淆不能保护长期密钥。",
+}
+MASTG_REFERENCES = {
+    "android-debuggable": [{"id": "MASTG-TEST-0226", "url": "https://mas.owasp.org/MASTG-TEST-0226/"}],
+    "android-cleartext": [{"id": "MASTG-TEST-0235", "url": "https://mas.owasp.org/MASTG/tests/android/MASVS-NETWORK/MASTG-TEST-0235/"}],
+    "android-backup": [{"id": "MASTG-TEST-0216", "url": "https://mas.owasp.org/MASTG/tests/android/MASVS-STORAGE/MASTG-TEST-0216/"}],
+    "webview-javascript-bridge": [{"id": "MASTG-TEST-0334", "url": "https://mas.owasp.org/MASTG/tests/android/MASVS-PLATFORM/MASTG-TEST-0334/"}],
+}
 ELF_MACHINES = {3: "x86", 40: "ARM", 62: "x86_64", 183: "AArch64", 243: "RISC-V"}
 
 
@@ -146,10 +191,38 @@ def _which(*names: str) -> str | None:
     return None
 
 
-def _run_tool(executable: str, args: list[str], timeout: int = 60) -> dict:
+def _tool_command(name: str) -> list[str] | None:
+    direct = _which(name, name + ".exe")
+    if direct and Path(direct).suffix.lower() in {".bat", ".cmd"}:
+        direct = None
+    if direct:
+        return [direct]
+    batch = _which(name + ".bat", name + ".cmd")
+    java = _which("java", "java.exe")
+    if not batch or not java:
+        return None
+    wrapper = Path(batch).resolve()
+    lib_dir = wrapper.parent.parent / "lib"
+    jars = [wrapper.parent / f"{name}.jar", wrapper.parent / "lib" / f"{name}.jar",
+            lib_dir / f"{name}.jar"]
+    if name == "jadx":
+        jars.extend(sorted(lib_dir.glob("jadx-cli*.jar")) if lib_dir.is_dir() else [])
+    jar = next((candidate for candidate in jars if candidate.is_file()), None)
+    if not jar:
+        return None
+    if name == "jadx":
+        return [java, "-cp", str(lib_dir / "*"), "jadx.cli.JadxCLI"]
+    if name == "apkanalyzer":
+        return [java, f"-Dcom.android.sdklib.toolsdir={wrapper.parent.parent}",
+                "-cp", str(lib_dir / "*"), "com.android.tools.apk.analyzer.ApkAnalyzerCli"]
+    return [java, "-jar", str(jar)]
+
+
+def _run_tool(executable: str | list[str], args: list[str], timeout: int = 60) -> dict:
     try:
         with tempfile.TemporaryFile() as stdout_file, tempfile.TemporaryFile() as stderr_file:
-            result = subprocess.run([executable, *args], stdout=stdout_file,
+            command = [executable] if isinstance(executable, str) else executable
+            result = subprocess.run([*command, *args], stdout=stdout_file,
                                     stderr=stderr_file, timeout=timeout,
                                     check=False, shell=False)
             stdout_file.seek(0, 2)
@@ -170,6 +243,217 @@ def _run_tool(executable: str, args: list[str], timeout: int = 60) -> dict:
         return {"error": f"timed out after {timeout} seconds"}
     except OSError as exc:
         return {"error": f"could not start tool: {exc.__class__.__name__}"}
+
+
+def _scan_decompiled_tree(root: Path) -> dict:
+    hits = []
+    files_seen = 0
+    bytes_seen = 0
+    truncated = False
+    for source in root.rglob("*"):
+        if not source.is_file() or source.suffix.lower() not in {".java", ".kt", ".smali"}:
+            continue
+        files_seen += 1
+        if files_seen > MAX_DECOMPILED_FILES:
+            truncated = True
+            break
+        try:
+            size = source.stat().st_size
+            if size > 16 * 1024 * 1024:
+                truncated = True
+                continue
+            if bytes_seen + size > MAX_DECOMPILED_SOURCE_BYTES:
+                truncated = True
+                break
+            bytes_seen += size
+            with source.open("r", encoding="utf-8", errors="replace") as stream:
+                line_number = 0
+                while True:
+                    line = stream.readline(65_536)
+                    if not line:
+                        break
+                    line_number += 1
+                    for rule_id, area, pattern, rationale in CODE_RULES:
+                        match = pattern.search(line)
+                        if not match:
+                            continue
+                        excerpt = SECRET_PATTERN.sub(r"\1=[REDACTED]", line.strip())
+                        excerpt = re.sub(r"([?&][^=&#\s]+=)[^&#\s]*", r"\1[REDACTED]", excerpt)
+                        hits.append({
+                            "rule_id": rule_id,
+                            "masvs_area": MASVS_AREAS.get(area, f"MASVS-{area.upper()}"),
+                            "file": str(source.relative_to(root)).replace("\\", "/"),
+                            "line": line_number,
+                            "evidence_excerpt_redacted": excerpt[:500],
+                            "interpretation": rationale,
+                            "status": "static-candidate-requires-call-path-validation",
+                        })
+                        if len(hits) >= MAX_CODE_FINDINGS:
+                            truncated = True
+                            break
+                    if len(hits) >= MAX_CODE_FINDINGS:
+                        break
+        except OSError:
+            continue
+        if len(hits) >= MAX_CODE_FINDINGS:
+            break
+    return {"files_scanned": min(files_seen, MAX_DECOMPILED_FILES),
+            "source_bytes_scanned": bytes_seen, "findings": hits,
+            "finding_count": len(hits), "truncated": truncated,
+            "coverage_note": "Line-level pattern matches are leads; confirm syntax, reachability, platform guards, and data flow."}
+
+
+def _decompile_with_jadx(apk: Path) -> dict:
+    executable = _tool_command("jadx")
+    if not executable:
+        return {"status": "unavailable", "tool": "jadx"}
+    version = _run_tool(executable, ["--version"], timeout=20)
+    try:
+        with tempfile.TemporaryDirectory(prefix="qnx-jadx-") as temp_dir:
+            output_dir = Path(temp_dir) / "src"
+            result = _run_tool(executable, ["-d", str(output_dir), str(apk)], timeout=300)
+            if result.get("exit_code") != 0 or not output_dir.is_dir():
+                return {"status": "failed", "version": version.get("stdout", "").strip(),
+                        "run": result}
+            return {"status": "completed", "version": version.get("stdout", "").strip(),
+                    "run": {key: val for key, val in result.items() if key != "stdout"},
+                    **_scan_decompiled_tree(output_dir)}
+    except OSError as exc:
+        return {"status": "failed", "error": exc.__class__.__name__}
+
+
+def _decode_with_apktool(apk: Path) -> dict:
+    executable = _tool_command("apktool")
+    if not executable:
+        return {"status": "unavailable", "tool": "apktool"}
+    version = _run_tool(executable, ["--version"], timeout=20)
+    try:
+        with tempfile.TemporaryDirectory(prefix="qnx-apktool-") as temp_dir:
+            output_dir = Path(temp_dir) / "decoded"
+            result = _run_tool(executable, ["d", "-f", "-o", str(output_dir), str(apk)], timeout=300)
+            manifest_facts = None
+            manifest_file = output_dir / "AndroidManifest.xml"
+            if manifest_file.is_file() and manifest_file.stat().st_size <= 8 * 1024 * 1024:
+                try:
+                    manifest_facts = _manifest_facts(manifest_file.read_text(encoding="utf-8", errors="replace"))
+                except (ET.ParseError, OSError):
+                    pass
+            source_scan = _scan_decompiled_tree(output_dir) if result.get("exit_code") == 0 else None
+            return {"status": "completed" if result.get("exit_code") == 0 else "failed",
+                    "version": version.get("stdout", "").strip(),
+                    "run": {key: val for key, val in result.items() if key != "stdout"},
+                    "manifest": manifest_facts, "smali_analysis": source_scan}
+    except OSError as exc:
+        return {"status": "failed", "error": exc.__class__.__name__}
+
+
+def _dependency_inventory(apk: Path, max_components: int = 500,
+                           scan_vulnerabilities: bool = False) -> dict:
+    components = {}
+    hints = []
+    try:
+        with zipfile.ZipFile(apk) as archive:
+            for info in archive.infolist():
+                name = info.filename
+                lower = name.lower()
+                if lower.endswith("/pom.properties") and "/meta-inf/maven/" in lower and info.file_size <= 64 * 1024:
+                    try:
+                        with archive.open(info) as stream:
+                            raw_bytes = stream.read(64 * 1024 + 1)
+                        if len(raw_bytes) > 64 * 1024:
+                            continue
+                        raw = raw_bytes.decode("utf-8", "replace")
+                    except (OSError, RuntimeError, zipfile.BadZipFile):
+                        continue
+                    props = {}
+                    for line in raw.splitlines():
+                        line = line.strip()
+                        if line and not line.startswith(("#", "!")) and "=" in line:
+                            key, value = line.split("=", 1)
+                            props[key.strip()] = value.strip()
+                    group, artifact, version = (props.get("groupId"), props.get("artifactId"), props.get("version"))
+                    if group and artifact and version:
+                        purl = f"pkg:maven/{quote(group, safe='.-_')}/{quote(artifact, safe='.-_')}@{quote(version, safe='.-_+~')}"
+                        components[purl] = {"type": "library", "name": f"{group}:{artifact}",
+                                            "version": version, "purl": purl,
+                                            "evidence": name, "confidence": "embedded Maven pom.properties"}
+                elif lower.endswith((".jar", ".aar")) or lower.startswith(("lib/", "assets/")) and "license" in lower:
+                    hints.append(name[:512])
+                if len(components) >= max_components:
+                    break
+    except (OSError, zipfile.BadZipFile):
+        return {"error": "dependency inventory unavailable", "components": [], "component_count": 0}
+    items = sorted(components.values(), key=lambda item: item["purl"])
+    sbom = {"bomFormat": "CycloneDX", "specVersion": "1.5", "version": 1,
+            "metadata": {"tools": [{"vendor": "Qi-NX", "name": "QNX-Agent Android APK engine"}]},
+            "components": items}
+    osv = {"status": "not-requested", "reason": "network-capable advisory lookup requires explicit opt-in"}
+    scanner = _which("osv-scanner", "osv-scanner.exe")
+    if scan_vulnerabilities and not items:
+        osv = {"status": "not-run", "reason": "no exact-version Maven components found"}
+    elif scan_vulnerabilities and scanner:
+        try:
+            with tempfile.TemporaryDirectory(prefix="qnx-apk-sbom-") as temp_dir:
+                sbom_path = Path(temp_dir) / "bom.cdx.json"
+                sbom_path.write_text(json.dumps(sbom, ensure_ascii=False), encoding="utf-8")
+                result = _run_tool(scanner, ["scan", "source", "-L", str(sbom_path), "--format", "json"], timeout=180)
+                osv = {"status": "completed" if result.get("exit_code") == 0 else "failed",
+                       "exit_code": result.get("exit_code"), "output_truncated": result.get("output_truncated"),
+                       "report": result.get("stdout", ""), "stderr": result.get("stderr", "")}
+        except OSError as exc:
+            osv = {"status": "failed", "error": exc.__class__.__name__}
+    elif scan_vulnerabilities and not scanner:
+        osv = {"status": "unavailable", "reason": "osv-scanner not found"}
+    return {"components": items, "component_count": len(items),
+            "unversioned_dependency_hints": hints[:100], "hints_truncated": len(hints) > 100,
+            "sbom": sbom, "osv_scan": osv,
+            "coverage_note": "Only embedded Maven pom.properties provide exact coordinates here; shaded, native, obfuscated, and metadata-free libraries can be missed. OSV results are version matches, not proof of reachable vulnerable code."}
+
+
+def _osv_findings(report_text: str) -> list[dict]:
+    try:
+        report = json.loads(report_text)
+    except (TypeError, json.JSONDecodeError):
+        return []
+    findings = []
+    for result in report.get("results", []) or []:
+        for package_row in result.get("packages", []) or []:
+            package = package_row.get("package", {})
+            name, version, ecosystem = (package.get("name"), package.get("version"), package.get("ecosystem"))
+            for vuln in package_row.get("vulnerabilities", []) or []:
+                score = None
+                for item in vuln.get("severity", []) or []:
+                    raw_score = item.get("score")
+                    try:
+                        candidate_score = float(raw_score)
+                        if 0 <= candidate_score <= 10:
+                            score = max(score or 0, candidate_score)
+                    except (TypeError, ValueError):
+                        pass
+                level = ("CRITICAL" if score >= 9 else "HIGH" if score >= 7 else
+                         "MEDIUM" if score >= 4 else "LOW" if score is not None else "UNRATED")
+                aliases = vuln.get("aliases", [])
+                fixed = []
+                for affected in vuln.get("affected", []) or []:
+                    for item in affected.get("ranges", []) or []:
+                        fixed.extend(event["fixed"] for event in item.get("events", []) if event.get("fixed"))
+                references = [ref.get("url") for ref in vuln.get("references", []) or [] if ref.get("url")]
+                identifier = vuln.get("id", "unknown-advisory")
+                _candidate(findings, "dependency-vulnerability", level,
+                           f"Dependency advisory match: {identifier}",
+                           "OSV matched the embedded package name/version to an advisory. Confirm package identity, affected range, shaded/repackaged status, reachable vulnerable code, and vendor backports before assigning impact.",
+                           f"{ecosystem}:{name}@{version}; source={result.get('source', {}).get('path', 'SBOM')}")
+                findings[-1].update({
+                    "masvs_area": "MASVS-CODE",
+                    "status": "unverified-version-match",
+                    "confidence": "database/version match only; vulnerable code reachability not assessed",
+                    "advisory_id": identifier,
+                    "aliases": aliases,
+                    "cvss_score": score,
+                    "fixed_versions": sorted(set(fixed)),
+                    "references": references,
+                })
+    return findings
 
 
 def _manifest_facts(xml_text: str) -> dict:
@@ -308,17 +592,21 @@ def _aapt_facts(tree_text: str) -> dict:
 
 
 def _candidate(findings: list[dict], category: str, severity: str,
-               title: str, detail: str, evidence: str) -> None:
+               title: str, detail: str, evidence: str,
+               mastg_refs: list[dict] | None = None) -> None:
     number = len(findings) + 1
     findings.append({
         "finding_id": f"F-{number:04d}",
         "evidence_id": f"E-{number:04d}",
         "category": category,
         "severity": severity,
+        "masvs_area": MASVS_AREAS.get(category, "MASVS-OTHER"),
+        "mastg_references": mastg_refs or [],
         "status": "unverified-static-lead",
         "confidence": "candidate; requires code-path or runtime validation",
         "title": title,
         "detail": detail,
+        "remediation": REMEDIATION_HINTS.get(category, "先验证代码路径与实际影响，再按最小权限和安全默认值修复。"),
         "evidence": evidence,
     })
 
@@ -330,17 +618,20 @@ def _audit_manifest(facts: dict, members: list[dict]) -> list[dict]:
         _candidate(findings, "application-configuration", "MEDIUM",
                    "Application debuggable flag is enabled",
                    "Debuggable builds may expose debugging surfaces; confirm build intent and release status.",
-                   "AndroidManifest.xml application android:debuggable=true")
+                   "AndroidManifest.xml application android:debuggable=true",
+                   MASTG_REFERENCES["android-debuggable"])
     if attrs.get("usesCleartextTraffic", "").lower() == "true":
         _candidate(findings, "transport-security", "MEDIUM",
                    "Manifest permits cleartext traffic",
                    "Determine whether sensitive traffic can use cleartext and whether Network Security Config narrows this setting.",
-                   "AndroidManifest.xml application android:usesCleartextTraffic=true")
+                   "AndroidManifest.xml application android:usesCleartextTraffic=true",
+                   MASTG_REFERENCES["android-cleartext"])
     if attrs.get("allowBackup", "").lower() == "true":
         _candidate(findings, "data-protection", "LOW",
                    "Application backup is enabled",
                    "Review backup rules, Android version behavior, and whether sensitive app data is excluded.",
-                   "AndroidManifest.xml application android:allowBackup=true")
+                   "AndroidManifest.xml application android:allowBackup=true",
+                   MASTG_REFERENCES["android-backup"])
     if attrs.get("testOnly", "").lower() == "true":
         _candidate(findings, "application-configuration", "LOW",
                    "Application is marked test-only",
@@ -366,7 +657,9 @@ def _audit_manifest(facts: dict, members: list[dict]) -> list[dict]:
     return findings
 
 
-def analyze(target: str, *, max_entries: int = 20_000) -> dict:
+def analyze(target: str, *, max_entries: int = 20_000, deep_analysis: bool = False,
+            isolated_tooling_confirmed: bool = False,
+            scan_vulnerabilities: bool = False) -> dict:
     path = Path(target).expanduser().resolve()
     if not path.is_file():
         return {"error": f"target is not a regular file: {path}", "author": BANNER}
@@ -489,7 +782,14 @@ def analyze(target: str, *, max_entries: int = 20_000) -> dict:
                 "target": str(path), "sha256": sha256, "author": BANNER}
 
     is_single_apk = path.suffix.lower() == ".apk"
-    apkanalyzer = _which("apkanalyzer", "apkanalyzer.bat")
+    if is_single_apk and isolated_tooling_confirmed:
+        tool_results["external_android_tools"] = {"status": "enabled", "isolation_confirmed": True}
+    else:
+        tool_results["external_android_tools"] = {
+            "status": "skipped",
+            "reason": "set isolated_tooling_confirmed=true before running external tools against a sample",
+        }
+    apkanalyzer = _tool_command("apkanalyzer") if isolated_tooling_confirmed else None
     if apkanalyzer and is_single_apk:
         summary = _run_tool(apkanalyzer, ["apk", "summary", str(path)])
         tool_results["apkanalyzer_summary"] = summary
@@ -510,7 +810,7 @@ def analyze(target: str, *, max_entries: int = 20_000) -> dict:
                 tool_results["manifest_source"] = "apkanalyzer"
             except ET.ParseError as exc:
                 tool_results["manifest_parse_error"] = str(exc)
-    if manifest_facts is None and is_single_apk:
+    if manifest_facts is None and is_single_apk and isolated_tooling_confirmed:
         aapt2 = _which("aapt2", "aapt2.exe")
         if aapt2:
             decoded = _run_tool(aapt2, ["dump", "xmltree", str(path), "--file", "AndroidManifest.xml"])
@@ -532,12 +832,12 @@ def analyze(target: str, *, max_entries: int = 20_000) -> dict:
                         tool_results["manifest_source"] = "aapt"
                     except ValueError as exc:
                         tool_results["manifest_parse_error"] = str(exc)
-    if manifest_facts is None and is_single_apk:
+    if manifest_facts is None and is_single_apk and isolated_tooling_confirmed:
         aapt = _which("aapt2", "aapt2.exe", "aapt", "aapt.exe")
         if aapt:
             tool_results["aapt_badging"] = _run_tool(aapt, ["dump", "badging", str(path)])
 
-    apksigner = _which("apksigner", "apksigner.bat")
+    apksigner = _tool_command("apksigner") if isolated_tooling_confirmed else None
     if apksigner and is_single_apk:
         tool_results["apksigner_verify"] = _run_tool(
             apksigner, ["verify", "--verbose", "--print-certs", str(path)])
@@ -547,7 +847,10 @@ def analyze(target: str, *, max_entries: int = 20_000) -> dict:
             "reason": "Signer verification is run per APK; this container may include nested APK splits.",
         }
     else:
-        tool_results["apksigner_verify"] = {"status": "unavailable"}
+        tool_results["apksigner_verify"] = {
+            "status": "unavailable" if isolated_tooling_confirmed else "skipped",
+            "reason": "apksigner not found" if isolated_tooling_confirmed else "external sample parsers were not enabled",
+        }
 
     if path.suffix.lower() == ".aab":
         archive_warnings.append("AAB module manifests are not decoded by this first-pass APK analyzer; use bundletool to build a device-specific APK set for per-APK analysis.")
@@ -570,13 +873,45 @@ def analyze(target: str, *, max_entries: int = 20_000) -> dict:
                    "The APK signature could not be verified by the available apksigner; distinguish unsigned, malformed, unsupported, or modified artifacts.",
                    f"apksigner exit code {signer.get('exit_code')}; review its output and compare against a trusted release certificate.")
 
-    severity_order = ("CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO")
+    dependency_analysis = _dependency_inventory(path, scan_vulnerabilities=scan_vulnerabilities)
+    osv = dependency_analysis.get("osv_scan") or {}
+    if osv.get("status") == "completed":
+        findings.extend(_osv_findings(osv.get("report", "")))
+    code_analysis = {"jadx": {"status": "skipped", "reason": "deep analysis not requested"},
+                     "apktool": {"status": "skipped", "reason": "deep analysis not requested"}}
+    if is_single_apk and deep_analysis and not isolated_tooling_confirmed:
+        code_analysis = {"jadx": {"status": "blocked", "reason": "confirm an isolated analyst environment before parsing hostile APKs"},
+                         "apktool": {"status": "blocked", "reason": "confirm an isolated analyst environment before parsing hostile APKs"}}
+    elif is_single_apk and deep_analysis and isolated_tooling_confirmed:
+        code_analysis = {"jadx": _decompile_with_jadx(path),
+                         "apktool": _decode_with_apktool(path)}
+        if manifest_facts is None and code_analysis["apktool"].get("manifest"):
+            manifest_facts = code_analysis["apktool"]["manifest"]
+            findings.extend(_audit_manifest(manifest_facts, members))
+            archive_warnings = [warning for warning in archive_warnings
+                                if warning != "AndroidManifest.xml was not decoded; component and configuration checks are incomplete."]
+        for engine_name in ("jadx", "apktool"):
+            result = code_analysis[engine_name]
+            hits = result.get("findings", []) or (result.get("smali_analysis") or {}).get("findings", [])
+            for hit in hits:
+                _candidate(findings, hit["rule_id"], "UNRATED",
+                           f"Android code pattern: {hit['rule_id']}", hit["interpretation"],
+                           f"{engine_name}:{hit['file']}:{hit['line']} {hit['evidence_excerpt_redacted']}")
+                findings[-1]["masvs_area"] = hit["masvs_area"]
+                findings[-1]["rule_id"] = hit["rule_id"]
+                findings[-1]["mastg_references"] = MASTG_REFERENCES.get(hit["rule_id"], [])
+        for component in dependency_analysis.get("components", []):
+            component.setdefault("vulnerability_match_status", "not-scanned")
+    for finding in findings:
+        finding.setdefault("masvs_area", MASVS_AREAS.get(finding.get("category"), "MASVS-OTHER"))
+
+    severity_order = ("CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO", "UNRATED")
     severity_counts = {level: sum(1 for finding in findings if finding["severity"] == level)
                        for level in severity_order}
     max_severity = next((level for level in severity_order if severity_counts[level]), None)
 
     return {
-        "analysis": "static-first-pass",
+        "analysis": "static-deep" if any(item.get("status") == "completed" for item in code_analysis.values()) else "static-first-pass",
         "target": str(path),
         "file_name": path.name,
         "file_size": path.stat().st_size,
@@ -601,6 +936,8 @@ def analyze(target: str, *, max_entries: int = 20_000) -> dict:
         "manifest": manifest_facts,
         "signing": tool_results.get("apksigner_verify"),
         "tool_results": tool_results,
+        "code_analysis": code_analysis,
+        "dependency_analysis": dependency_analysis,
         "findings": findings,
         "finding_count": len(findings),
         "severity_counts": severity_counts,
@@ -610,7 +947,7 @@ def analyze(target: str, *, max_entries: int = 20_000) -> dict:
             "This is a static first-pass audit, not proof of exploitability or a certification that the app is safe.",
             "DEX code, native code, embedded dependency versions, runtime behavior, backend APIs, and omitted split APKs require separate analysis.",
             "Manifest candidates require source/call-path review and platform-version context; tool availability limits are listed above.",
-            "No archive members were extracted and no app code was executed or installed.",
+            "The default parser does not extract archive members. If explicitly enabled, JADX/APKTool decode into temporary directories that are removed after analysis; static analysis never installs or executes app code.",
         ],
         "author": BANNER,
     }
@@ -620,10 +957,18 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Inspect an Android package and audit its manifest without installing it.")
     parser.add_argument("target", help="APK, APKS, XAPK, APKM, or AAB file")
     parser.add_argument("--max-entries", type=int, default=20_000)
+    parser.add_argument("--deep", action="store_true", help="enable JADX/APKTool parsing (requires --confirm-isolated-tooling)")
+    parser.add_argument("--confirm-isolated-tooling", action="store_true",
+                        help="confirm external APK parsers run inside an isolated analyst environment")
+    parser.add_argument("--scan-vulnerabilities", action="store_true",
+                        help="opt in to OSV-Scanner; may contact public advisory services")
     parser.add_argument("--json", action="store_true", help="retained for script-tool compatibility")
     args = parser.parse_args()
     try:
-        result = analyze(args.target, max_entries=args.max_entries)
+        result = analyze(args.target, max_entries=args.max_entries,
+                         deep_analysis=args.deep,
+                         isolated_tooling_confirmed=args.confirm_isolated_tooling,
+                         scan_vulnerabilities=args.scan_vulnerabilities)
     except Exception as exc:  # noqa: BLE001
         result = {"error": f"analysis failed: {exc.__class__.__name__}", "author": BANNER}
     print(json.dumps(result, indent=2, ensure_ascii=False, default=str))

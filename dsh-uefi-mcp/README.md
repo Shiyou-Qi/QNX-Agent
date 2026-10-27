@@ -31,7 +31,12 @@ All tools are published under the `uefi` server name, so the model sees
 | `dynamic_evidence` | `source`, `sample_sha256?` | normalize exported CAPE/Cuckoo JSON, Sysmon JSONL, or Procmon CSV into an event timeline and candidate IOCs; offline parsing only |
 | `vulnerability_scan` | `target`, `scanner`, `timeout_seconds?`, `output_file?` | run installed OSV-Scanner (`osv`), Trivy (`trivy`), or Semgrep (`semgrep`) on a local path; target is not launched |
 | `security_assessment` | `report`, `target?`, `target_sha256?`, `scanner?` | offline parse of Trivy/OSV/Semgrep JSON or SARIF into stable finding/evidence IDs and severity summary |
-| `android_apk_analyze` | `target`, `max_entries?` | Qi-NX APK first-pass engine: SHA-256, ZIP/split/DEX/native inventory, Android SDK manifest decoding, common manifest exposure leads, bounded DEX string clues, and signer verification when `apksigner` is available; never extracts, installs, or executes the app |
+| `android_apk_analyze` | `target`, `max_entries?`, `deep_analysis?`, `isolated_tooling_confirmed?`, `scan_vulnerabilities?` | APK identity, Manifest, signer, DEX/native inventory; optional JADX/APKTool decoding requires both deep-analysis flags; OWASP MASVS/MastG leads; OSV is opt-in |
+| `android_apk_doctor` | — | external Android tool paths/versions, SDK location, connected emulator serials; read-only |
+| `android_apk_compare` | `before`, `after`, `deep_analysis?`, `isolated_tooling_confirmed?` | Manifest, archive, dependency, and finding-candidate diffs across APK versions |
+| `android_dependency_scan` | `target`, `scan_vulnerabilities?` | Maven metadata inventory and CycloneDX SBOM; optional network-capable OSV-Scanner lookup |
+| `android_dynamic_session` | `apk`, `package_name`, `device_serial`, `authorized`, `isolated_emulator_confirmed`, `observation_seconds?` | bounded install/launch/log capture only on a confirmed `emulator-<port>` device after explicit authorization |
+| `android_apk_report` | `target`, `output_path?`, `language?`, `deep_analysis?`, `isolated_tooling_confirmed?`, `scan_vulnerabilities?`, `dynamic_json?`, `authorization_scope?` | complete Markdown report with hashes, findings, MASVS/MASTG references, dependencies, coverage, authorization scope, and evidence ledger; refuses overwrite |
 
 Broken or missing prerequisites never produce a fake success: tools return
 `{"error": "..."}` plus a `hint` or `fallback` field naming the working
@@ -54,17 +59,30 @@ vulnerability_scan ./project scanner=osv
 vulnerability_scan ./project scanner=trivy
 vulnerability_scan ./project scanner=semgrep
 security_assessment ./scan-results.json scanner=trivy
+android_apk_doctor
 android_apk_analyze ./app.apk
+android_apk_analyze ./app.apk deep_analysis=true isolated_tooling_confirmed=true
+android_dependency_scan ./app.apk scan_vulnerabilities=true
+android_apk_compare ./old.apk ./new.apk
+android_apk_report ./app.apk output_path=reports/app.md
 ```
 
-The Android engine is also available directly as
-`python .dsh/engines/android-apk/android_apk_analyze.py <apk>`. It uses the
-Python standard library and calls `apkanalyzer` or `aapt2` for compiled Manifest
-decoding and `apksigner` for signature verification when those tools are on
-`PATH`. It statically inspects bounded DEX string pools but does not decompile
-DEX control flow. Manifest and string matches are leads: continue with JADX,
-apktool, Ghidra/MobSF, dependency matching, and authorized emulator analysis as
-the evidence requires. It never executes app code or writes extracted members.
+The Android inventory engine is also available directly as
+`python .dsh/engines/android-apk/android_apk_analyze.py <apk>`. Its default
+pass uses bounded Python ZIP/DEX inspection. The `isolated_tooling_confirmed`
+flag enables Android SDK/signature parsers on the sample; adding
+`deep_analysis=true` also runs JADX/APKTool into disposable temporary
+directories and produces source-line pattern candidates. Decoded files are
+removed when the call ends. These tools parse hostile input, so use an isolated
+analyst environment.
+The engine does not prove call-path reachability. The bounded dynamic workflow
+requires explicit authorization, a disposable emulator, and an
+`emulator-<port>` serial; it performs only install, one launch attempt, and
+package-PID-filtered log capture. Dependency SBOM coverage is limited to exact
+Maven coordinates embedded in `META-INF/pom.properties`; shaded, obfuscated,
+native, and metadata-free libraries can be missed. OSV lookup is opt-in and may
+contact public advisory services. Findings and version diffs are leads, not
+security verdicts.
 
 The vulnerability scanners are optional external executables and must be on
 `PATH`. Scans pass the local target as an argument and do not execute it. OSV,
